@@ -151,21 +151,19 @@ export function attachAutoLoad(anchor: ElementLike | null, sessionId: string, ha
       current.pumping = false
     }
     if (current.detached) return
-    // Resting at the top after the load: keep paging. The seat re-attaches
-    // with the fresh snapshot (hasMore/loadingOlder) and pumps immediately;
-    // the timer is the fallback that re-checks the refreshed state.
+    // Resting at the top after the load: keep paging. Yield a microtask so
+    // the snapshot has a chance to propagate (the re-attach with fresh flags
+    // will also trigger a pump via the existing branch), then re-check.
     current.continueAfterRefresh = target.scrollTop <= TOP_THRESHOLD
     if (!current.continueAfterRefresh) return
-    current.pendingTimer = setTimeout(() => {
-      current.pendingTimer = null
-      if (current.detached || current.pumping || !current.continueAfterRefresh) return
-      if (target.scrollTop > TOP_THRESHOLD || !current.hasMore || current.loadingOlder) {
-        current.continueAfterRefresh = false
-        return
-      }
+    await new Promise((resolve) => queueMicrotask(resolve))
+    if (current.detached || current.pumping || !current.continueAfterRefresh) return
+    if (target.scrollTop > TOP_THRESHOLD || !current.hasMore || current.loadingOlder) {
       current.continueAfterRefresh = false
-      void pump(current, target)
-    }, CONTINUE_DELAY_MS)
+      return
+    }
+    current.continueAfterRefresh = false
+    void pump(current, target)
   }
 
   function release(target: ScrollHostLike, current: HostEntry): void {

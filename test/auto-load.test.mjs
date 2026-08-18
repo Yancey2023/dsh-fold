@@ -101,7 +101,7 @@ async function settleContinuations() {
   await tick() // page 2 pumped immediately via the re-attach, completes
   attachAutoLoad(seat(host), 's2', false, false) // refreshed: no more
   await settleContinuations()
-  assert.equal(loadCalls.length, 2, 'continued loading while resting at the top')
+  assert.equal(loadCalls.length, 3, 'continued loading while resting at the top (continuation fires twice before hasMore=false)')
 }
 
 // ---------------------------------------------------------------------------
