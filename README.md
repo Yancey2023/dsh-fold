@@ -1,5 +1,7 @@
 # dsh-fold
 
+[**中文文档**](README.zh.md)
+
 Fold **consecutive tool calls inside one assistant turn** in the DeepSeek
 Harness (DSH) Web GUI into a single line with a live
 running-tool label, a running call count, and expand/collapse. Long user
@@ -182,8 +184,26 @@ ChatView (conversation.view)
 
 ## Install (web profile)
 
+### From GitHub (recommended)
+
 ```bash
-# from a local checkout (build first):
+dsh plugin --profile web add github:Yancey2023/dsh-fold
+# restart the web app:
+dsh --profile web
+```
+
+The CLI clones the repo, resolves the bundle patch, and appends `dsh-fold`
+to the profile bundle stack. To update to the latest version:
+
+```bash
+dsh plugin --profile web update dsh-fold
+# restart:
+dsh --profile web
+```
+
+### From a local checkout
+
+```bash
 pnpm install
 pnpm build
 
@@ -201,8 +221,6 @@ dsh --profile web
 appends `dsh-fold` to the profile bundle stack; the client loader
 picks up the `dsh.client.platform: "web"` manifest and serves
 `exports["./client"]` to the page. The host row is a minimal anchor only.
-
-For a GitHub install: `dsh plugin --profile web add github:you/dsh-fold`.
 
 ## Uninstall
 

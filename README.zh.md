@@ -1,5 +1,7 @@
 # dsh-fold
 
+[**English docs**](README.md)
+
 把 DeepSeek Harness（DSH）Web GUI 中**同一个 assistant turn 内连续的工具调用**折叠成一行：实时显示"正在运行"的工具名、累计调用数，支持展开/折叠。**过长的用户输入折叠为 3 行**，带独立的 展开/收起 按钮。
 
 实现**纯 Slot / React**：不碰 DOM、不用 MutationObserver、不用 display:none、不用 querySelector；展开后的每张工具卡片都复用官方 renderer（用户气泡则用官方 primitives 重建）。
@@ -55,6 +57,25 @@ ChatView (conversation.view)
 
 ## 安装（web profile）
 
+### 从 GitHub 安装（推荐）
+
+```bash
+dsh plugin --profile web add github:Yancey2023/dsh-fold
+# 重启 web：
+dsh --profile web
+```
+
+CLI 会自动克隆仓库、解析 bundle patch、把 `dsh-fold` 追加到 profile 的 bundle 栈。
+更新到最新版：
+
+```bash
+dsh plugin --profile web update dsh-fold
+# 重启：
+dsh --profile web
+```
+
+### 从本地目录安装
+
 ```bash
 pnpm install && pnpm build
 # 方式 A —— 官方插件 CLI：
@@ -64,8 +85,6 @@ pnpm run install:dsh            # DSH_PROFILE 默认 web
 # 重启 web：
 dsh --profile web
 ```
-
-GitHub 安装：`dsh plugin --profile web add github:you/dsh-fold`。
 
 ## 卸载
 
