@@ -186,4 +186,35 @@ function childrenOf(node) {
   root.unmount()
 }
 
+// ---------------------------------------------------------------------------
+// REASONING TRANSPARENCY: think rows between tools fold with the group.
+// Collapsed: one bar; expanded: think rows + official cards interleaved.
+// ---------------------------------------------------------------------------
+{
+  function assistantNode(key, blocks, status = 'settled') {
+    return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: { blocks, status } }
+  }
+  const think = (text) => ({ kind: 'reasoning', text })
+  const snapshot = makeSession(
+    ['a1', 't1', 'a2', 't2'],
+    [assistantNode('a1', [think('first reasoning')]), toolNode('t1', 1, settled('read')), assistantNode('a2', [think('second reasoning')]), toolNode('t2', 1, running('bash'))],
+  )
+  const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
+  // Collapsed: ONE bar; count 2; running label bash; think text hidden.
+  let text = textOf(root.toJSON())
+  assert.ok(text.includes('2'), 'count 2 across reasoning')
+  assert.ok(text.includes('正在运行') && text.includes('bash'), 'running label')
+  assert.ok(!text.includes('first reasoning') && !text.includes('second reasoning'), 'think rows hidden while collapsed')
+  // Expanded: think rows shown in flow order between the official cards.
+  act(() => {
+    root.toJSON().children[0].props.onClick()
+  })
+  text = textOf(root.toJSON())
+  assert.ok(text.includes('first reasoning') && text.includes('second reasoning'), 'think rows shown when expanded')
+  assert.ok(text.includes('FALLBACK:read') && text.includes('CARD:bash:c-bash'), 'official tool cards shown')
+  assert.ok(text.indexOf('first reasoning') < text.indexOf('FALLBACK:read'), 'think1 before tool1')
+  assert.ok(text.indexOf('FALLBACK:read') < text.indexOf('second reasoning'), 'tool1 before think2')
+  root.unmount()
+}
+
 console.log('component.test: all assertions passed')

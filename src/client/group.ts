@@ -8,16 +8,29 @@
  *
  * Grouping rule (no DOM involved — pure snapshot reads):
  *   consecutive `tool-call` nodes in `snapshot.chat.order` belonging to the
- *   SAME turn form one group. Any other visible node (assistant text,
- *   user/steering message, command, ...) or an unresolved/foreign turn ends
- *   the run, so groups never merge across assistant text or turn boundaries.
- *   Reasoning never splits a run in this data model: it is a block INSIDE the
- *   assistant-step node, and that node is anchored before its step's tool
- *   calls, so it can never appear between two tool-call nodes.
+ *   SAME turn form one group. Assistant-step nodes whose blocks contain ONLY
+ *   reasoning (and tool-call placeholders — the product renders those as
+ *   nothing) are TRANSPARENT to the run: they neither split chains nor count
+ *   as members, but they are folded WITH the group (hidden while collapsed,
+ *   re-shown between the calls when expanded). Any other visible node —
+ *   assistant TEXT, user/steering message, command, compaction, … — ends the
+ *   run, so groups never merge across text or turn boundaries.
+ *
+ * Why reasoning is transparent: in the DSH data model every step that
+ * produces a tool call also streams a reasoning block, and the assistant-step
+ * node carries it as a visible Think row anchored between the surrounding
+ * tool calls. Treating it as a boundary would isolate every tool call into
+ * its own group (consecutive bars, counts never accumulating).
  *
  * Structural types mirror the runtime contracts; the runtime package is never
  * imported here so this module stays unit-testable in plain Node.
  */
+
+export interface AssistantBlockLike {
+  readonly kind: 'text' | 'reasoning' | 'image' | 'tool-call' | 'other'
+  readonly text?: string
+  readonly block?: unknown
+}
 
 export interface ChatNodeLike {
   readonly key: string
@@ -26,7 +39,12 @@ export interface ChatNodeLike {
     readonly kind: 'turn' | 'step' | 'unresolved'
     readonly turn?: { readonly turn: number }
   }
-  readonly data?: { readonly root?: ToolBlockLike }
+  readonly data?: {
+    readonly root?: ToolBlockLike
+    /** Assistant payload: blocks are the step's content (text/reasoning/tool-call/...). */
+    readonly blocks?: readonly AssistantBlockLike[]
+    readonly status?: 'running' | 'settled' | 'interrupted'
+  }
 }
 
 /** Running lifecycle form: no `kind` member. */
@@ -62,22 +80,26 @@ export interface GroupSnapshotLike {
   readonly nodes: { get(key: string): ChatNodeLike | undefined }
 }
 
+/** One folded item of a group: a top-level tool call or a transparent think row. */
+export type GroupItem =
+  | { readonly kind: 'tool'; readonly key: string; readonly node: ChatNodeLike }
+  | { readonly kind: 'think'; readonly key: string; readonly node: ChatNodeLike }
+
 export interface ToolGroup {
-  /** Key of the first member; only that seat renders the group row. */
+  /** Key of the first TOOL member; only that seat renders the group row. */
   readonly leaderKey: string
-  /** Member node keys in flow order (top-level calls only). */
-  readonly keys: readonly string[]
-  /** Member nodes in flow order. */
-  readonly members: readonly ChatNodeLike[]
-  /** Turn number shared by every member; undefined for unresolved locations. */
-  readonly turn: number | undefined
-  /** The first still-running block, or undefined once every call settled. */
-  readonly running: ToolBlockLike | undefined
-  /** Top-level call count (subcalls inside a block are NOT counted). */
+  /** All folded item keys in flow order (tools + transparent think rows). */
+  readonly itemKeys: readonly string[]
+  /** All folded items in flow order. */
+  readonly items: readonly GroupItem[]
+  /** Top-level tool call count (subcalls inside a block are NOT counted). */
   readonly count: number
+  /** The first still-running tool block, or undefined once every call settled. */
+  readonly running: ToolBlockLike | undefined
 }
 
 const TOOL_KIND = 'tool-call'
+const ASSISTANT_KIND = 'assistant-step'
 
 function turnOf(node: ChatNodeLike): number | undefined {
   const loc = node.location
@@ -93,6 +115,22 @@ function sameTurn(left: ChatNodeLike, right: ChatNodeLike): boolean {
   return tl === turnOf(right)
 }
 
+/**
+ * Whether an assistant node is group-transparent: its blocks contain only
+ * reasoning (foldable Think rows) and tool-call placeholders / empty text —
+ * i.e. no user-visible TEXT or other content. Any non-empty text block (or
+ * image/unknown content) makes the node a hard boundary.
+ */
+export function isTransparentAssistant(node: ChatNodeLike | undefined): node is ChatNodeLike {
+  if (node === undefined || node.kind !== ASSISTANT_KIND) return false
+  const blocks = node.data?.blocks ?? []
+  return blocks.every((block) => {
+    if (block.kind === 'reasoning' || block.kind === 'tool-call') return true
+    if (block.kind === 'text') return (block.text ?? '').trim() === ''
+    return false
+  })
+}
+
 /** True when the block is the still-running lifecycle form. */
 export function isRunningBlock(block: ToolBlockLike | undefined): block is RunningToolBlock {
   return block !== undefined && !('kind' in block)
@@ -103,9 +141,15 @@ export function callName(block: ToolBlockLike): string {
   return 'kind' in block ? block.call?.name ?? '' : block.name
 }
 
+/** A node continues the current run (same turn): a tool call or a transparent think row. */
+function continuesRun(node: ChatNodeLike, anchor: ChatNodeLike): boolean {
+  if (!sameTurn(node, anchor)) return false
+  return node.kind === TOOL_KIND || isTransparentAssistant(node)
+}
+
 /**
  * Compute the group containing the node with `nodeKey`, or null when the node
- * is absent / not a tool-call node. The result is a pure function of the
+ * is absent / not part of a tool run. The result is a pure function of the
  * snapshot; callers memoize for render stability.
  */
 export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup | null {
@@ -117,30 +161,38 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   let start = idx
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1])
-    if (prev === undefined || prev.kind !== TOOL_KIND || !sameTurn(prev, node)) break
+    if (prev === undefined || !continuesRun(prev, node)) break
     start -= 1
   }
   let end = idx
   while (end < order.length - 1) {
     const next = snapshot.nodes.get(order[end + 1])
-    if (next === undefined || next.kind !== TOOL_KIND || !sameTurn(next, node)) break
+    if (next === undefined || !continuesRun(next, node)) break
     end += 1
   }
   const keys = order.slice(start, end + 1)
-  const members: ChatNodeLike[] = []
+  const items: GroupItem[] = []
+  let leaderKey: string | undefined
   for (const key of keys) {
     const member = snapshot.nodes.get(key)
-    if (member !== undefined) members.push(member)
-  }
-  let running: ToolBlockLike | undefined
-  for (const member of members) {
-    const block = member.data?.root
-    if (isRunningBlock(block)) {
-      running = block
-      break
+    if (member === undefined) continue
+    if (member.kind === TOOL_KIND) {
+      if (leaderKey === undefined) leaderKey = key
+      items.push({ kind: 'tool', key, node: member })
+    } else {
+      items.push({ kind: 'think', key, node: member })
     }
   }
-  return { leaderKey: keys[0], keys, members, turn: turnOf(node), running, count: keys.length }
+  if (leaderKey === undefined) return null
+  let running: ToolBlockLike | undefined
+  let count = 0
+  for (const item of items) {
+    if (item.kind !== 'tool') continue
+    count += 1
+    const block = item.node.data?.root
+    if (running === undefined && isRunningBlock(block)) running = block
+  }
+  return { leaderKey, itemKeys: keys, items, count, running }
 }
 
 /** Whether this seat is the group leader (the only one that renders). */
@@ -148,16 +200,52 @@ export function isGroupLeader(group: ToolGroup, nodeKey: string): boolean {
   return group.leaderKey === nodeKey
 }
 
+/**
+ * Whether a (transparent) assistant node is currently absorbed by a group —
+ * its run contains at least one tool call. Used by the assistant wrapper to
+ * decide between hiding (grouped) and official standalone rendering.
+ */
+export function isAssistantGrouped(snapshot: GroupSnapshotLike, nodeKey: string): boolean {
+  const order = snapshot.order
+  const idx = order.indexOf(nodeKey)
+  if (idx < 0) return false
+  const node = snapshot.nodes.get(nodeKey)
+  if (node === undefined || !isTransparentAssistant(node)) return false
+  let start = idx
+  while (start > 0) {
+    const prev = snapshot.nodes.get(order[start - 1])
+    if (prev === undefined || !continuesRun(prev, node)) break
+    start -= 1
+  }
+  let end = idx
+  while (end < order.length - 1) {
+    const next = snapshot.nodes.get(order[end + 1])
+    if (next === undefined || !continuesRun(next, node)) break
+    end += 1
+  }
+  for (let i = start; i <= end; i += 1) {
+    const member = snapshot.nodes.get(order[i])
+    if (member !== undefined && member.kind === TOOL_KIND) return true
+  }
+  return false
+}
+
 /** Reference-stable equality for useSession's eq parameter. */
 export function eqGroup(left: ToolGroup | null, right: ToolGroup | null): boolean {
   if (left === null || right === null) return left === right
   if (left.leaderKey !== right.leaderKey || left.running !== right.running) return false
-  if (left.keys.length !== right.keys.length || left.members.length !== right.members.length) return false
-  for (let i = 0; i < left.keys.length; i += 1) {
-    if (left.keys[i] !== right.keys[i]) return false
+  if (left.itemKeys.length !== right.itemKeys.length || left.items.length !== right.items.length) return false
+  for (let i = 0; i < left.itemKeys.length; i += 1) {
+    if (left.itemKeys[i] !== right.itemKeys[i]) return false
   }
-  for (let i = 0; i < left.members.length; i += 1) {
-    if (left.members[i] !== right.members[i]) return false
+  for (let i = 0; i < left.items.length; i += 1) {
+    if (left.items[i].node !== right.items[i].node) return false
   }
   return true
+}
+
+/** Reference-stable equality for the assistant wrapper's grouping probe. */
+export function eqGrouped(left: { grouped: boolean; node: ChatNodeLike | undefined } | null, right: { grouped: boolean; node: ChatNodeLike | undefined } | null): boolean {
+  if (left === null || right === null) return left === right
+  return left.grouped === right.grouped && left.node === right.node
 }

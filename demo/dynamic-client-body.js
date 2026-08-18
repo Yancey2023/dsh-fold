@@ -48,12 +48,12 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var import_dsh_client_ui_slots = __dynRequire("@deepseek-ai/dsh-client-ui-slots");
 
-// src/client/ToolCallGroupView.tsx
+// src/client/AssistantNodeWrapper.tsx
 var React = __toESM(__dynRequire("react"), 1);
-var import_dsh_client_ui_primitives = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
 
 // src/client/group.ts
 var TOOL_KIND = "tool-call";
+var ASSISTANT_KIND = "assistant-step";
 function turnOf(node) {
   const loc = node.location;
   if (loc === void 0) return void 0;
@@ -65,11 +65,24 @@ function sameTurn(left, right) {
   if (tl === void 0) return false;
   return tl === turnOf(right);
 }
+function isTransparentAssistant(node) {
+  if (node === void 0 || node.kind !== ASSISTANT_KIND) return false;
+  const blocks = node.data?.blocks ?? [];
+  return blocks.every((block) => {
+    if (block.kind === "reasoning" || block.kind === "tool-call") return true;
+    if (block.kind === "text") return (block.text ?? "").trim() === "";
+    return false;
+  });
+}
 function isRunningBlock(block) {
   return block !== void 0 && !("kind" in block);
 }
 function callName(block) {
   return "kind" in block ? block.call?.name ?? "" : block.name;
+}
+function continuesRun(node, anchor) {
+  if (!sameTurn(node, anchor)) return false;
+  return node.kind === TOOL_KIND || isTransparentAssistant(node);
 }
 function groupOf(snapshot, nodeKey) {
   const order = snapshot.order;
@@ -80,48 +93,109 @@ function groupOf(snapshot, nodeKey) {
   let start = idx;
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1]);
-    if (prev === void 0 || prev.kind !== TOOL_KIND || !sameTurn(prev, node)) break;
+    if (prev === void 0 || !continuesRun(prev, node)) break;
     start -= 1;
   }
   let end = idx;
   while (end < order.length - 1) {
     const next = snapshot.nodes.get(order[end + 1]);
-    if (next === void 0 || next.kind !== TOOL_KIND || !sameTurn(next, node)) break;
+    if (next === void 0 || !continuesRun(next, node)) break;
     end += 1;
   }
   const keys = order.slice(start, end + 1);
-  const members = [];
+  const items = [];
+  let leaderKey;
   for (const key of keys) {
     const member = snapshot.nodes.get(key);
-    if (member !== void 0) members.push(member);
-  }
-  let running;
-  for (const member of members) {
-    const block = member.data?.root;
-    if (isRunningBlock(block)) {
-      running = block;
-      break;
+    if (member === void 0) continue;
+    if (member.kind === TOOL_KIND) {
+      if (leaderKey === void 0) leaderKey = key;
+      items.push({ kind: "tool", key, node: member });
+    } else {
+      items.push({ kind: "think", key, node: member });
     }
   }
-  return { leaderKey: keys[0], keys, members, turn: turnOf(node), running, count: keys.length };
+  if (leaderKey === void 0) return null;
+  let running;
+  let count = 0;
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    count += 1;
+    const block = item.node.data?.root;
+    if (running === void 0 && isRunningBlock(block)) running = block;
+  }
+  return { leaderKey, itemKeys: keys, items, count, running };
 }
 function isGroupLeader(group, nodeKey) {
   return group.leaderKey === nodeKey;
 }
+function isAssistantGrouped(snapshot, nodeKey) {
+  const order = snapshot.order;
+  const idx = order.indexOf(nodeKey);
+  if (idx < 0) return false;
+  const node = snapshot.nodes.get(nodeKey);
+  if (node === void 0 || !isTransparentAssistant(node)) return false;
+  let start = idx;
+  while (start > 0) {
+    const prev = snapshot.nodes.get(order[start - 1]);
+    if (prev === void 0 || !continuesRun(prev, node)) break;
+    start -= 1;
+  }
+  let end = idx;
+  while (end < order.length - 1) {
+    const next = snapshot.nodes.get(order[end + 1]);
+    if (next === void 0 || !continuesRun(next, node)) break;
+    end += 1;
+  }
+  for (let i = start; i <= end; i += 1) {
+    const member = snapshot.nodes.get(order[i]);
+    if (member !== void 0 && member.kind === TOOL_KIND) return true;
+  }
+  return false;
+}
 function eqGroup(left, right) {
   if (left === null || right === null) return left === right;
   if (left.leaderKey !== right.leaderKey || left.running !== right.running) return false;
-  if (left.keys.length !== right.keys.length || left.members.length !== right.members.length) return false;
-  for (let i = 0; i < left.keys.length; i += 1) {
-    if (left.keys[i] !== right.keys[i]) return false;
+  if (left.itemKeys.length !== right.itemKeys.length || left.items.length !== right.items.length) return false;
+  for (let i = 0; i < left.itemKeys.length; i += 1) {
+    if (left.itemKeys[i] !== right.itemKeys[i]) return false;
   }
-  for (let i = 0; i < left.members.length; i += 1) {
-    if (left.members[i] !== right.members[i]) return false;
+  for (let i = 0; i < left.items.length; i += 1) {
+    if (left.items[i].node !== right.items[i].node) return false;
   }
   return true;
 }
+function eqGrouped(left, right) {
+  if (left === null || right === null) return left === right;
+  return left.grouped === right.grouped && left.node === right.node;
+}
+
+// src/client/AssistantNodeWrapper.tsx
+var slotsService;
+function setSlotsService(service) {
+  slotsService = service;
+}
+function officialAssistantEntry() {
+  const service = slotsService;
+  if (service === void 0) return void 0;
+  const all = service.entries("conversation.chat.node");
+  return all.find((entry) => entry.options.key === "assistant-step" && (entry.options.priority ?? 0) === 0);
+}
+var AssistantNodeWrapper = React.memo(function AssistantNodeWrapper2(props) {
+  const { node, useSession } = props;
+  const probe = useSession(
+    (snapshot) => isTransparentAssistant(node) ? { grouped: isAssistantGrouped(snapshot.chat, node.key), node } : null,
+    eqGrouped
+  );
+  if (probe !== null && probe.grouped) return null;
+  const official = officialAssistantEntry();
+  if (official === void 0 || typeof official.component !== "function") return null;
+  return React.createElement(official.component, props);
+});
 
 // src/client/ToolCallGroupView.tsx
+var React2 = __toESM(__dynRequire("react"), 1);
+var import_dsh_client_ui_primitives = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
 function FallbackToolCard({ toolName, block, t }) {
   const settled = "kind" in block;
   const error = settled && (block.isError === true || block.error !== void 0);
@@ -129,12 +203,12 @@ function FallbackToolCard({ toolName, block, t }) {
   if (!settled) argsText = block.argsRaw ?? "";
   else if (block.call?.argsRaw) argsText = block.call.argsRaw;
   const output = settled ? flattenContent(block.content) : "";
-  return React.createElement(
+  return React2.createElement(
     "div",
     { className: "dshToolGroupFallback" },
-    React.createElement("div", { className: "dshToolGroupFallbackTitle" }, `${toolName}${error ? " \u2715" : ""}`),
-    argsText !== "" ? React.createElement("pre", { className: "dshToolGroupFallbackArgs" }, argsText) : null,
-    settled && output !== "" ? React.createElement("pre", { className: "dshToolGroupFallbackOutput", "data-error": error || void 0 }, output) : null
+    React2.createElement("div", { className: "dshToolGroupFallbackTitle" }, `${toolName}${error ? " \u2715" : ""}`),
+    argsText !== "" ? React2.createElement("pre", { className: "dshToolGroupFallbackArgs" }, argsText) : null,
+    settled && output !== "" ? React2.createElement("pre", { className: "dshToolGroupFallbackOutput", "data-error": error || void 0 }, output) : null
   );
 }
 function flattenContent(content) {
@@ -144,13 +218,12 @@ function flattenContent(content) {
       if (part === null || typeof part !== "object") return "";
       const p = part;
       if (p.type === "text" && typeof p.text === "string") return p.text;
-      if (p.type === "image" || p.type === "file") return "";
       return "";
     }).filter(Boolean).join("\n");
   }
   return "";
 }
-var ToolCallBranch = React.memo(function ToolCallBranch2({
+var ToolCallBranch = React2.memo(function ToolCallBranch2({
   renderSlot,
   block,
   selectedCallId,
@@ -160,7 +233,7 @@ var ToolCallBranch = React.memo(function ToolCallBranch2({
   t
 }) {
   const name2 = callName(block);
-  const owner = React.useMemo(
+  const owner = React2.useMemo(
     () => ({
       callId: block.callId,
       toolName: name2,
@@ -173,11 +246,11 @@ var ToolCallBranch = React.memo(function ToolCallBranch2({
     }),
     [block, name2, openFile, cwd, inspectCall]
   );
-  const children = block.subCalls !== void 0 && block.subCalls.length > 0 ? React.createElement(
+  const children = block.subCalls !== void 0 && block.subCalls.length > 0 ? React2.createElement(
     "div",
     { className: "dshToolGroupSubCalls", "data-subcalls": true },
     block.subCalls.map(
-      (child) => React.createElement(ToolCallBranch2, {
+      (child) => React2.createElement(ToolCallBranch2, {
         key: child.callId,
         renderSlot,
         block: child,
@@ -189,7 +262,7 @@ var ToolCallBranch = React.memo(function ToolCallBranch2({
       })
     )
   ) : null;
-  return React.createElement(
+  return React2.createElement(
     "div",
     {
       className: "dshToolGroupCallRow",
@@ -199,28 +272,89 @@ var ToolCallBranch = React.memo(function ToolCallBranch2({
     },
     renderSlot("tool.call.toolview", owner, {
       entryKey: name2,
-      fallback: React.createElement(FallbackToolCard, { toolName: name2, block, t })
+      fallback: React2.createElement(FallbackToolCard, { toolName: name2, block, t })
     }),
     children
   );
 });
-var ToolCallGroupView = React.memo(function ToolCallGroupView2(props) {
+function firstLine(text) {
+  const newline = text.indexOf("\n");
+  return newline === -1 ? text : text.slice(0, newline);
+}
+function latestLine(text) {
+  const visible = text.trimEnd();
+  const newline = visible.lastIndexOf("\n");
+  return newline === -1 ? visible : visible.slice(newline + 1);
+}
+function InlineThink({ text, running, t }) {
+  const [expanded, setExpanded] = React2.useState(false);
+  const summary = running ? latestLine(text) : firstLine(text);
+  return React2.createElement(
+    "div",
+    { className: "dshToolGroupThink", "data-variant": "think", "data-state": running ? "running" : "ok" },
+    running ? React2.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
+    React2.createElement(import_dsh_client_ui_primitives.DisclosureRow, {
+      rowClassName: "dshToolGroupThinkRow",
+      leadingClassName: "dshToolGroupThinkLeading",
+      titleClassName: "dshToolGroupThinkTitle",
+      chevronClassName: "dshToolGroupThinkChevron",
+      icon: React2.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 }),
+      title: "Think",
+      open: expanded,
+      expandable: true,
+      expandOnRowClick: true,
+      onToggle: () => {
+        setExpanded((value) => !value);
+      },
+      collapsedContent: React2.createElement(
+        React2.Fragment,
+        null,
+        React2.createElement("span", { className: "dshToolGroupThinkSeparator", "aria-hidden": true }),
+        React2.createElement(
+          "span",
+          { className: "dshToolGroupThinkSummary", "data-follow-end": running || void 0 },
+          summary
+        )
+      ),
+      children: React2.createElement("div", { className: "dshToolGroupThinkBody" }, text)
+    })
+  );
+}
+function ThinkItem({ item, t }) {
+  const blocks = item.node.data?.blocks ?? [];
+  const reasoning = blocks.filter((block) => block.kind === "reasoning" && (block.text ?? "").trim() !== "");
+  if (reasoning.length === 0) return null;
+  const running = item.node.data?.status === "running";
+  return React2.createElement(
+    React2.Fragment,
+    null,
+    reasoning.map(
+      (block, index) => React2.createElement(InlineThink, {
+        key: `${item.key}:${index}`,
+        text: block.text ?? "",
+        running: running && index === reasoning.length - 1,
+        t
+      })
+    )
+  );
+}
+var ToolCallGroupView = React2.memo(function ToolCallGroupView2(props) {
   const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t } = props;
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup);
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React2.useState(false);
   if (group === null || !isGroupLeader(group, node.key)) return null;
   const runningName = isRunningBlock(group.running) ? group.running.name : null;
-  const toggle = React.useCallback(() => setExpanded((value) => !value), []);
+  const toggle = React2.useCallback(() => setExpanded((value) => !value), []);
   const onKeyDown = (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       setExpanded((value) => !value);
     }
   };
-  const chevron = React.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
+  const chevron = React2.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
     className: "dshToolGroupChevron"
   });
-  const bar = React.createElement(
+  const bar = React2.createElement(
     "div",
     {
       className: "dshToolGroupRow",
@@ -231,26 +365,29 @@ var ToolCallGroupView = React.memo(function ToolCallGroupView2(props) {
       onClick: toggle,
       onKeyDown
     },
-    React.createElement(
+    React2.createElement(
       "div",
       { className: "dshToolGroupLeft" },
-      runningName !== null ? [React.createElement("span", { key: "running", className: "dshToolGroupRunning" }, t("running")), React.createElement("span", { key: "name", className: "dshToolGroupName" }, runningName)] : null
+      runningName !== null ? [React2.createElement("span", { key: "running", className: "dshToolGroupRunning" }, t("running")), React2.createElement("span", { key: "name", className: "dshToolGroupName" }, runningName)] : null
     ),
-    React.createElement(
+    React2.createElement(
       "div",
       { className: "dshToolGroupRight" },
-      React.createElement("span", { className: "dshToolGroupCount" }, String(group.count)),
+      React2.createElement("span", { className: "dshToolGroupCount" }, String(group.count)),
       chevron
     )
   );
-  const members = group.members.length > 0 ? React.createElement(
+  const items = React2.createElement(
     "div",
-    { className: "dshToolGroupMembers" },
-    group.members.map((member) => {
-      const root = member.data?.root;
+    { className: "dshToolGroupItems" },
+    group.items.map((item) => {
+      if (item.kind === "think") {
+        return React2.createElement(ThinkItem, { key: item.key, item, t });
+      }
+      const root = item.node.data?.root;
       if (root === void 0) return null;
-      return React.createElement(ToolCallBranch, {
-        key: member.key,
+      return React2.createElement(ToolCallBranch, {
+        key: item.key,
         renderSlot,
         block: root,
         selectedCallId,
@@ -260,12 +397,12 @@ var ToolCallGroupView = React.memo(function ToolCallGroupView2(props) {
         t
       });
     })
-  ) : null;
-  return React.createElement(
+  );
+  return React2.createElement(
     "div",
     { className: "dshToolGroup", "data-tool-group": "", "data-state": runningName !== null ? "running" : "settled" },
     bar,
-    expanded && members !== null ? members : null
+    expanded ? items : null
   );
 });
 
@@ -303,8 +440,41 @@ var CSS = `
 .dshToolGroupChevron{
   color:var(--dsw-alias-label-secondary);display:inline-flex;flex:none;
 }
-.dshToolGroupMembers{
+.dshToolGroupItems{
   display:flex;flex-direction:column;gap:16px;margin-top:16px;
+}
+.dshToolGroupThink{flex-direction:column;display:flex}
+.dshToolGroupThinkRow{position:relative;overflow:hidden}
+.dshToolGroupThink[data-state=running] .dshToolGroupThinkRow:after{
+  content:"";inset-block:0;
+  background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);
+  pointer-events:none;width:300px;
+  animation:2.6s ease-out infinite dshToolGroup-reasoning-sweep;
+  position:absolute;left:0;
+}
+@keyframes dshToolGroup-reasoning-sweep{0%{left:-300px}90%,to{left:100%}}
+.dshToolGroupThinkLeading{flex-shrink:0}
+.dshToolGroupThinkChevron{color:var(--dsw-alias-label-secondary)}
+.dshToolGroupThinkTitle{font-weight:400}
+.dshToolGroupThinkSeparator{
+  background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;
+  width:2px;height:2px;margin:0 8px;
+}
+.dshToolGroupThinkSummary{
+  min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;
+  white-space:nowrap;flex:auto;font-size:14px;line-height:24px;overflow:hidden;
+}
+.dshToolGroupThinkSummary[data-follow-end]{text-overflow:clip}
+.dshToolGroupThinkBody{
+  color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;word-break:break-word;
+  padding:4px 0 4px 22px;font-size:14px;line-height:24px;
+}
+.dshToolGroupVisuallyHidden{
+  clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;
+  position:absolute;overflow:hidden;
+}
+@media (prefers-reduced-motion:reduce){
+  .dshToolGroupThink[data-state=running] .dshToolGroupThinkRow:after{animation:none}
 }
 .dshToolGroupCallRow{border-radius:6px}
 .dshToolGroupSubCalls{
@@ -465,6 +635,7 @@ function apply(ctx) {
   if (slots === void 0 || locale === void 0 || typeof document === "undefined") return;
   const restoreOverlay = installSlotCoreOverlay(import_dsh_client_ui_slots.SlotCore);
   ctx.effect(() => restoreOverlay, "dsh-tool-group: slot-core overlay");
+  setSlotsService(slots);
   ctx.effect(() => locale.register("tool-group", DICTS), "dsh-tool-group: dictionaries");
   ctx.effect(() => insertStyle(document), "dsh-tool-group: styles");
   ctx.effect(
@@ -481,6 +652,18 @@ function apply(ctx) {
       ToolCallGroupView
     ),
     "dsh-tool-group: tool-call shadow"
+  );
+  ctx.effect(
+    () => slots.register(
+      {
+        name: "conversation.chat.node",
+        key: "assistant-step",
+        priority: -100,
+        locale: "conversation"
+      },
+      AssistantNodeWrapper
+    ),
+    "dsh-tool-group: assistant-step shadow"
   );
 }
 return module.exports

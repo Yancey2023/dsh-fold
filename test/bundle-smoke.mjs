@@ -94,14 +94,25 @@ registeredPlugin.apply({
 assert.equal(realSlots.SlotCore.prototype.register !== realRegister, true, 'overlay must replace register on the real SlotCore')
 assert.equal(realSlots.SlotCore.prototype.releaseEntry !== realRelease, true, 'overlay must replace releaseEntry on the real SlotCore')
 
-assert.equal(registrations.length, 1)
-const { options, component } = registrations[0]
+assert.equal(registrations.length, 2, 'two shadows: tool-call + assistant-step')
+const toolEntry = registrations.find((r) => r.options.key === 'tool-call')
+const assistantEntry = registrations.find((r) => r.options.key === 'assistant-step')
+assert.ok(toolEntry && assistantEntry, 'both cells registered')
+
+const { options, component } = toolEntry
 assert.equal(options.name, 'conversation.chat.node')
 assert.equal(options.key, 'tool-call')
 assert.equal(options.priority, -100)
 assert.deepEqual(options.children, { 'tool.call.toolview': { kind: 'keyed', scope: 'session' } })
 assert.equal(options.locale, 'tool-group')
 assert.ok(typeof component === 'function' || (typeof component === 'object' && component !== null), 'registered component is the memoized group view')
+
+const aOptions = assistantEntry.options
+assert.equal(aOptions.name, 'conversation.chat.node')
+assert.equal(aOptions.key, 'assistant-step')
+assert.equal(aOptions.priority, -100)
+assert.equal(aOptions.locale, 'conversation')
+assert.ok(assistantEntry.component !== undefined, 'assistant wrapper registered')
 
 assert.equal(localeRegistrations.length, 1)
 assert.equal(localeRegistrations[0].ns, 'tool-group')

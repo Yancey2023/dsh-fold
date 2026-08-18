@@ -6,7 +6,7 @@
 
 ## 行为
 
-- **分组规则**：`snapshot.chat.order` 中连续且同 turn 的 `tool-call` 节点归为一组。任何其他可见节点（assistant 正文、user/steering、command、compaction…）都切断链条；不会跨正文或 turn 合并。reasoning 在 DSH 数据模型中是 assistant-step 节点内部的 block，锚定在该 step 的工具调用之前，因此不可能夹在两条工具调用之间。
+- **分组规则**：`snapshot.chat.order` 中连续且同 turn 的 `tool-call` 节点归为一组。只含 reasoning（Think 行）的 assistant-step 节点是**透明的**：不切断链条、不参与计数，但随组折叠（折叠时隐藏，展开时按原顺序插回调用之间）。只有真正的 assistant **正文**（以及 user/steering、command、compaction…）才切断链条——已用真实 288 调用会话验证：旧规则下每个 step 的 Think 行把链切成 150 组；透明化后同一流只按正文切成 85 组。（DSH 数据模型里每个产生工具调用的 step 都会流式输出 reasoning block，若把 reasoning 当边界，每个调用都会被隔离成独立一组。）
 - **运行中**：折叠行只显示当前正在执行的工具（`正在运行 <工具名>`），右侧为累计数量（已完成+运行中）+ 箭头。当前调用结束后自动切换到下一个运行中的调用；全部结束（含 error/cancelled/interrupted——任何 `tool-result` 形态）后左侧留空。
 - **展开后**：顶部保留组条（箭头朝下），下方按真实执行顺序渲染**官方 `tool.call.toolview` 分发**的成员卡片——与产品 `ToolCallTree` 完全同一条分发路径，bash/read/grep/web 等卡片、status/参数/输出/错误/subcall/嵌套调用全部保持原生。展开过程中新调用实时追加，不会自动折叠（展开状态保存在组长 seat 的 React state，key 为首个调用的稳定节点 key）。
 - **计数**：只统计顶层调用；block 内部的 subcall 不重复计数。
@@ -31,7 +31,7 @@ ChatView (conversation.view)
                                ← 官方 per-tool 卡片（bash、read、…）
 ```
 
-1. **Seam**：keyed slot `conversation.chat.node` 的 `tool-call` 单元格，用 priority shadow（slot core 文档明确支持："register at a different priority to shadow it (lowest renders)"）。分组完全在 React 里用 `useSession` 读快照计算，不依赖 DOM。
+1. **Seam**：keyed slot `conversation.chat.node` 的两个单元格，用 priority shadow（slot core 文档明确支持："register at a different priority to shadow it (lowest renders)"）：`tool-call` 单元格由 `ToolCallGroupView` 接管；`assistant-step` 单元格由 `AssistantNodeWrapper` 接管——reasoning-only 且位于工具链内的节点返回 null（Think 行随组折叠），其余（正文、独立思考、中断态）通过实时注册表（`slots.entries`）委托给官方 `AssistantNodeView`。分组完全在 React 里用 `useSession` 读快照计算，不依赖 DOM。
 2. **只有组长渲染**：每个 tool-call 节点各有一个 seat；组内第一个节点的 seat 渲染整组，其余 seat 返回 null（零高度），因此每组只出现一行。
 3. **唯一一处框架适配**：slot core 禁止第二个条目为已声明的子 slot 重复声明 `children`，而没有该 children 表就拿不到 `tool.call.toolview` 的 `renderSlot` 绑定。`src/client/slots-core-overlay.ts` 在 `SlotCore.prototype.register`/`.releaseEntry` 上安装**可逆 overlay**（与 shell 同一模块实例；ui-slots 是 shell-own static module），把结构完全相同的子 spec 视为共享声明。overlay 是包在官方方法外的**薄包装**（不依赖方法文本），对发布包与压缩后的线上 web bundle 同样有效；卸载时恢复原始方法，产品声明不受任何扰动。这正是 `docs/core-patch.md`（源码级 patch）的内容，以运行时形式交付，因此插件可在未修改的 DSH 上工作。没有这个 overlay，纯 slot API **无法**表达"shadow 一个 keyed renderer 同时还要委托它的子 slot"——这是本插件唯一绕过的架构限制，且 core 改动与插件代码严格分离。
 

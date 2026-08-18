@@ -3,16 +3,20 @@
  * cell `tool-call`.
  *
  * One ChatNodeSeat mounts per tool-call node. Only the seat of the group's
- * FIRST member renders the group row; every other member seat returns null
- * (its flowItem div is empty — zero-height). The group is computed from the
- * conversation snapshot (`snapshot.chat.order` + `snapshot.chat.nodes`), so
- * streaming appends re-render the leader with the new count/running label
+ * FIRST TOOL member renders the group row; every other member seat returns
+ * null (its flowItem div is empty — zero-height). The group is computed from
+ * the conversation snapshot (`snapshot.chat.order` + `snapshot.chat.nodes`),
+ * so streaming appends re-render the leader with the new count/running label
  * while non-leader seats stay untouched.
  *
- * Collapsed: one line — [running tool name (only while a call is in
- * progress)] [count] [chevron]. All members settled => empty left side.
- * Expanded: the official per-call UI (same `tool.call.toolview` dispatch the
- * product's ToolCallTree uses) for every member, in execution order.
+ * The group folds tool calls AND the reasoning (Think) rows between them
+ * (transparent assistant nodes): collapsed shows one line — [running tool
+ * name (only while a call is in progress)] [count] [chevron]; all calls
+ * settled => empty left side. Expanded shows the bar plus every folded item
+ * in execution order: tool calls through the official `tool.call.toolview`
+ * dispatch (the same path the product's ToolCallTree uses), think rows as
+ * faithful replicas of the product's ReasoningRow (DisclosureRow +
+ * ThinkOutline icon, product CSS).
  *
  * Expanded state lives in React state of the leader seat; the seat's React
  * key is the leader's stable node key, so streaming updates never collapse a
@@ -20,9 +24,15 @@
  */
 
 import * as React from 'react'
-import { IconChevronDownOutline14, IconChevronRightOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  DisclosureRow,
+  IconChevronDownOutline14,
+  IconChevronRightOutline14,
+  IconThinkOutline14,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock } from './group'
-import type { ChatNodeLike, ToolBlockLike } from './group'
+import type { ChatNodeLike, GroupItem, ToolBlockLike } from './group'
+
 /** renderSlot face for the `tool.call.toolview` child slot. */
 type RenderSlot = (
   key: 'tool.call.toolview',
@@ -83,7 +93,6 @@ function flattenContent(content: unknown): string {
         if (part === null || typeof part !== 'object') return ''
         const p = part as { type?: string; text?: unknown; content?: unknown }
         if (p.type === 'text' && typeof p.text === 'string') return p.text
-        if (p.type === 'image' || p.type === 'file') return ''
         return ''
       })
       .filter(Boolean)
@@ -162,7 +171,79 @@ const ToolCallBranch = React.memo(function ToolCallBranch({
   )
 })
 
-/** The group row itself (collapsed bar + optional expanded members). */
+/** First line of a text (product ReasoningRow behavior). */
+function firstLine(text: string): string {
+  const newline = text.indexOf('\n')
+  return newline === -1 ? text : text.slice(0, newline)
+}
+
+/** Last visible line (product ReasoningRow behavior while streaming). */
+function latestLine(text: string): string {
+  const visible = text.trimEnd()
+  const newline = visible.lastIndexOf('\n')
+  return newline === -1 ? visible : visible.slice(newline + 1)
+}
+
+/**
+ * Faithful replica of the product's ReasoningRow (Think disclosure): same
+ * DisclosureRow composition, same icon, same summary behavior, product CSS.
+ */
+function InlineThink({ text, running, t }: { text: string; running: boolean; t: ToolCallGroupViewProps['t'] }): React.ReactElement {
+  const [expanded, setExpanded] = React.useState(false)
+  const summary = running ? latestLine(text) : firstLine(text)
+  return React.createElement(
+    'div',
+    { className: 'dshToolGroupThink', 'data-variant': 'think', 'data-state': running ? 'running' : 'ok' },
+    running ? React.createElement('span', { className: 'dshToolGroupVisuallyHidden' }, t('running')) : null,
+    React.createElement(DisclosureRow, {
+      rowClassName: 'dshToolGroupThinkRow',
+      leadingClassName: 'dshToolGroupThinkLeading',
+      titleClassName: 'dshToolGroupThinkTitle',
+      chevronClassName: 'dshToolGroupThinkChevron',
+      icon: React.createElement(IconThinkOutline14, { size: 14 }),
+      title: 'Think',
+      open: expanded,
+      expandable: true,
+      expandOnRowClick: true,
+      onToggle: () => {
+        setExpanded((value) => !value)
+      },
+      collapsedContent: React.createElement(
+        React.Fragment,
+        null,
+        React.createElement('span', { className: 'dshToolGroupThinkSeparator', 'aria-hidden': true }),
+        React.createElement(
+          'span',
+          { className: 'dshToolGroupThinkSummary', 'data-follow-end': running || undefined },
+          summary,
+        ),
+      ),
+      children: React.createElement('div', { className: 'dshToolGroupThinkBody' }, text),
+    }),
+  )
+}
+
+/** One folded think item: render every reasoning block of the assistant node. */
+function ThinkItem({ item, t }: { item: GroupItem & { kind: 'think' }; t: ToolCallGroupViewProps['t'] }): React.ReactElement | null {
+  const blocks = item.node.data?.blocks ?? []
+  const reasoning = blocks.filter((block) => block.kind === 'reasoning' && (block.text ?? '').trim() !== '')
+  if (reasoning.length === 0) return null
+  const running = item.node.data?.status === 'running'
+  return React.createElement(
+    React.Fragment,
+    null,
+    reasoning.map((block, index) =>
+      React.createElement(InlineThink, {
+        key: `${item.key}:${index}`,
+        text: block.text ?? '',
+        running: running && index === reasoning.length - 1,
+        t,
+      }),
+    ),
+  )
+}
+
+/** The group row itself (collapsed bar + optional expanded items). */
 export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: ToolCallGroupViewProps): React.ReactElement | null {
   const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t } = props
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
@@ -208,32 +289,32 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
     ),
   )
 
-  const members =
-    group.members.length > 0
-      ? React.createElement(
-          'div',
-          { className: 'dshToolGroupMembers' },
-          group.members.map((member) => {
-            const root = member.data?.root
-            if (root === undefined) return null
-            return React.createElement(ToolCallBranch, {
-              key: member.key,
-              renderSlot,
-              block: root,
-              selectedCallId,
-              cwd,
-              openFile,
-              inspectCall,
-              t,
-            })
-          }),
-        )
-      : null
+  const items = React.createElement(
+    'div',
+    { className: 'dshToolGroupItems' },
+    group.items.map((item) => {
+      if (item.kind === 'think') {
+        return React.createElement(ThinkItem, { key: item.key, item, t })
+      }
+      const root = item.node.data?.root
+      if (root === undefined) return null
+      return React.createElement(ToolCallBranch, {
+        key: item.key,
+        renderSlot,
+        block: root,
+        selectedCallId,
+        cwd,
+        openFile,
+        inspectCall,
+        t,
+      })
+    }),
+  )
 
   return React.createElement(
     'div',
     { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': runningName !== null ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
     bar,
-    expanded && members !== null ? members : null,
+    expanded ? items : null,
   )
 })

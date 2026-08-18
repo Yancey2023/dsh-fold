@@ -38,8 +38,41 @@ export const CSS = `
 .dshToolGroupChevron{
   color:var(--dsw-alias-label-secondary);display:inline-flex;flex:none;
 }
-.dshToolGroupMembers{
+.dshToolGroupItems{
   display:flex;flex-direction:column;gap:16px;margin-top:16px;
+}
+.dshToolGroupThink{flex-direction:column;display:flex}
+.dshToolGroupThinkRow{position:relative;overflow:hidden}
+.dshToolGroupThink[data-state=running] .dshToolGroupThinkRow:after{
+  content:"";inset-block:0;
+  background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);
+  pointer-events:none;width:300px;
+  animation:2.6s ease-out infinite dshToolGroup-reasoning-sweep;
+  position:absolute;left:0;
+}
+@keyframes dshToolGroup-reasoning-sweep{0%{left:-300px}90%,to{left:100%}}
+.dshToolGroupThinkLeading{flex-shrink:0}
+.dshToolGroupThinkChevron{color:var(--dsw-alias-label-secondary)}
+.dshToolGroupThinkTitle{font-weight:400}
+.dshToolGroupThinkSeparator{
+  background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;
+  width:2px;height:2px;margin:0 8px;
+}
+.dshToolGroupThinkSummary{
+  min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;
+  white-space:nowrap;flex:auto;font-size:14px;line-height:24px;overflow:hidden;
+}
+.dshToolGroupThinkSummary[data-follow-end]{text-overflow:clip}
+.dshToolGroupThinkBody{
+  color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;word-break:break-word;
+  padding:4px 0 4px 22px;font-size:14px;line-height:24px;
+}
+.dshToolGroupVisuallyHidden{
+  clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;
+  position:absolute;overflow:hidden;
+}
+@media (prefers-reduced-motion:reduce){
+  .dshToolGroupThink[data-state=running] .dshToolGroupThinkRow:after{animation:none}
 }
 .dshToolGroupCallRow{border-radius:6px}
 .dshToolGroupSubCalls{

@@ -36,7 +36,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node test/group.test.mjs && node test/overlay.test.mjs && node test/bundle-smoke.mjs && node test/component.test.mjs && node test/integration.test.mjs",
+    "test": "node test/group.test.mjs && node test/overlay.test.mjs && node test/bundle-smoke.mjs && node test/component.test.mjs && node test/assistant.test.mjs && node test/integration.test.mjs",
     "install:dsh": "node scripts/install-dsh.cjs",
     "uninstall:dsh": "node scripts/install-dsh.cjs uninstall"
   },

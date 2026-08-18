@@ -15,6 +15,7 @@ import { create, act } from 'react-test-renderer'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { installSlotCoreOverlay } from '../lib/client-overlay.mjs'
 import { ToolCallGroupView } from '../lib/client-component.mjs'
+import { AssistantNodeWrapper, setSlotsService } from '../lib/client-assistant.mjs'
 
 function cellWinner(core, slotKey, entryKey) {
   const rec = core.records.get(slotKey)
@@ -80,8 +81,12 @@ const officialDispose = core.register(
   () => 'OFFICIAL_TREE',
 )
 core.register({ name: 'tool.call.toolview', key: 'bash' }, ({ block }) => `BASH_CARD:${block.callId}`)
+const officialAssistantDispose = core.register(
+  { name: 'conversation.chat.node', key: 'assistant-step', locale: 'conversation' },
+  () => 'OFFICIAL_ASSISTANT',
+)
 
-// Overlay + plugin registration (identical child spec co-declaration).
+// Overlay + plugin registrations (identical child spec co-declaration).
 const restoreOverlay = installSlotCoreOverlay(SlotCore)
 const shadowDispose = core.register(
   {
@@ -93,6 +98,17 @@ const shadowDispose = core.register(
   },
   ToolCallGroupView,
 )
+const assistantShadowDispose = core.register(
+  { name: 'conversation.chat.node', key: 'assistant-step', priority: -100, locale: 'conversation' },
+  AssistantNodeWrapper,
+)
+// The wrapper reaches the official entry through the live registry (like the
+// plugin entry's setSlotsService(slots)).
+setSlotsService({
+  entries(key) {
+    return core.records.get(key).entries
+  },
+})
 
 const dicts = { running: '正在运行', group: '工具调用组' }
 const session = {
@@ -148,14 +164,63 @@ const render = renderer(core, session, dicts)
 }
 
 // ---------------------------------------------------------------------------
-// Unload: official renderer wins again; child slot + occupants intact.
+// Assistant cell: wrapper wins; transparent+grouped -> null; text -> official.
+// ---------------------------------------------------------------------------
+{
+  function assistantNode(key, blocks, status = 'settled') {
+    return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: { blocks, status } }
+  }
+  const think = (text) => ({ kind: 'reasoning', text })
+  const textBlock = (text) => ({ kind: 'text', text })
+  const assistantEntry = cellWinner(core, 'conversation.chat.node', 'assistant-step')
+  assert.equal(assistantEntry.component, AssistantNodeWrapper, 'assistant shadow wins the cell')
+
+  // transparent + grouped -> null
+  const groupedSession = {
+    chat: {
+      order: ['a1', 't1', 't2'],
+      nodes: { get: (k) => ({ a1: assistantNode('a1', [think('hmm')]), t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')) })[k] },
+    },
+  }
+  const r1 = create(renderer(core, groupedSession, dicts)('conversation.chat.node', assistantEntry, { node: groupedSession.chat.nodes.get('a1') }))
+  assert.equal(r1.toJSON(), null, 'grouped transparent assistant hidden')
+  r1.unmount()
+
+  // text-bearing -> official (delegation through the registry)
+  const textSession = {
+    chat: {
+      order: ['a1'],
+      nodes: { get: (k) => ({ a1: assistantNode('a1', [think('hmm'), textBlock('最终结果是 ABC。')]) })[k] },
+    },
+  }
+  const r2 = create(renderer(core, textSession, dicts)('conversation.chat.node', assistantEntry, { node: textSession.chat.nodes.get('a1') }))
+  assert.equal(r2.toJSON(), 'OFFICIAL_ASSISTANT', 'text-bearing assistant delegates to the official view')
+  r2.unmount()
+
+  // standalone transparent -> official (think row visible without tools)
+  const standaloneSession = {
+    chat: {
+      order: ['a1'],
+      nodes: { get: (k) => ({ a1: assistantNode('a1', [think('standalone')]) })[k] },
+    },
+  }
+  const r3 = create(renderer(core, standaloneSession, dicts)('conversation.chat.node', assistantEntry, { node: standaloneSession.chat.nodes.get('a1') }))
+  assert.equal(r3.toJSON(), 'OFFICIAL_ASSISTANT', 'standalone think row delegates to the official view')
+  r3.unmount()
+}
+
+// ---------------------------------------------------------------------------
+// Unload: official renderers win again; child slot + occupants intact.
 // ---------------------------------------------------------------------------
 shadowDispose()
+assistantShadowDispose()
 const winner = cellWinner(core, 'conversation.chat.node', 'tool-call')
 assert.equal(winner.component(), 'OFFICIAL_TREE', 'official renderer restored')
+assert.equal(cellWinner(core, 'conversation.chat.node', 'assistant-step').component(), 'OFFICIAL_ASSISTANT', 'official assistant restored')
 assert.equal(core.records.get('tool.call.toolview').spec.kind, 'keyed', 'child slot still declared')
 assert.equal(core.records.get('tool.call.toolview').entries.length, 1, 'bash toolview still registered')
 restoreOverlay()
 officialDispose()
+officialAssistantDispose()
 
 console.log('integration.test: all assertions passed')

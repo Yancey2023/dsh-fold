@@ -20,12 +20,16 @@ are reused for every expanded tool card.
 ## Behaviour
 
 - **Grouping rule**: `tool-call` nodes that are consecutive in the chat flow
-  (`snapshot.chat.order`) and belong to the same turn form one group. Any
-  other visible node — assistant text, user/steering message, command,
-  compaction, … — ends the run, so groups never merge across assistant text
-  or turn boundaries. Reasoning cannot split a run in the DSH data model: it
-  is a block *inside* the assistant-step node, which is anchored before its
-  step's tool calls.
+  (`snapshot.chat.order`) and belong to the same turn form one group.
+  Assistant-step nodes whose blocks contain ONLY reasoning (Think rows) are
+  TRANSPARENT: they neither split chains nor count, but fold WITH the group
+  (hidden while collapsed, re-shown between the calls when expanded). Only
+  real assistant TEXT (and user/steering messages, commands, compaction, …)
+  ends a run — verified against a real 288-call session: with the old rule
+  every per-step Think row split the chain into 150 groups; with
+  transparency the same stream folds into 85 groups split exclusively by
+  text. (In the DSH data model every tool-producing step streams a reasoning
+  block, so without this rule every call would isolate into its own group.)
 - **While a call is running**: the collapsed line shows only the currently
   running tool (`正在运行 <tool>` / `Running <tool>`), the accumulated call
   count (completed + running), and a chevron. When the running call settles,
@@ -54,15 +58,22 @@ The runtime overlay is guarded by a method-text check and fails closed
 ChatView (conversation.view)
   └─ ChatNodeSeat × N                       one seat per business node
        └─ renderSlot("conversation.chat.node", {node}, {entryKey: kind})
-            └─ cell "tool-call":
-                 product:  ToolCallTree  (priority 0)
-                 ours:     ToolCallGroupView (priority -100  ← lowest wins)
-                              ├─ collapsed bar (running label · count · chevron)
-                              └─ expanded: ToolCallBranch × members
-                                   └─ renderSlot("tool.call.toolview", {callId,
-                                        toolName, block, cwd, openFile, inspect},
-                                        {entryKey: toolName})
-                                        ← official per-tool cards (bash, read, …)
+            ├─ cell "tool-call":
+            │      product:  ToolCallTree  (priority 0)
+            │      ours:     ToolCallGroupView (priority -100  ← lowest wins)
+            │                   ├─ collapsed bar (running label · count · chevron)
+            │                   └─ expanded: interleaved items
+            │                        ├─ think rows: InlineThink (ReasoningRow replica)
+            │                        └─ tool calls: ToolCallBranch × N
+            │                             └─ renderSlot("tool.call.toolview", …)
+            │                                 ← official per-tool cards (bash, read, …)
+            └─ cell "assistant-step":
+                   product:  AssistantNodeView (priority 0)
+                   ours:     AssistantNodeWrapper (priority -100)
+                                ├─ reasoning-only node inside a tool run → null
+                                │    (the group owns its Think rows)
+                                └─ everything else → delegates to the official
+                                     AssistantNodeView from the live registry
 ```
 
 1. **Seam**: the keyed Chat slot `conversation.chat.node`, cell `tool-call`,

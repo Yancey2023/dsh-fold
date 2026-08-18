@@ -39,7 +39,25 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 declare module '@deepseek-ai/dsh-client-ui-primitives' {
-  import type { FC, SVGProps } from 'react'
+  import type { FC, ReactNode, SVGProps } from 'react'
   export const IconChevronRightOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const IconChevronDownOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const IconThinkOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const DisclosureRow: FC<{
+    icon?: ReactNode
+    title?: ReactNode
+    open?: boolean
+    expandable?: boolean
+    onToggle?: () => void
+    expandOnRowClick?: boolean
+    previewChevron?: boolean
+    keepContentWhenOpen?: boolean
+    collapsedContent?: ReactNode
+    children?: ReactNode
+    className?: string
+    rowClassName?: string
+    leadingClassName?: string
+    chevronClassName?: string
+    titleClassName?: string
+  }>
 }

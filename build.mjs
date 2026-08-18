@@ -86,4 +86,17 @@ await build({
   logLevel: 'info',
 })
 
-console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-component.mjs')
+// ESM mirror of the assistant wrapper (icons stubbed), for render tests.
+await build({
+  entryPoints: ['src/client/AssistantNodeWrapper.tsx'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node18',
+  outfile: 'lib/client-assistant.mjs',
+  external: ['react', 'react/jsx-runtime'],
+  alias: { '@deepseek-ai/dsh-client-ui-primitives': './test/stubs/primitives.mjs' },
+  logLevel: 'info',
+})
+
+console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-component.mjs, lib/client-assistant.mjs')
