@@ -6,8 +6,8 @@
  * automatically — no button click needed (the product's 加载更早 button
  * keeps working as a manual fallback). And while the user KEEPS resting at
  * the top, pages continue loading one after another until `hasMore` clears
- * or the user scrolls away: after a load settles, the next page is pulled
- * automatically (the snapshot refresh re-arms the pump).
+ * or the user scrolls away: the pump simply recurses after each completed
+ * load while the conditions stay met.
  *
  * Implementation notes:
  *  - The scroll host is found through the product's OWN documented contract:
@@ -49,10 +49,6 @@ interface HostEntry {
   onScroll: (() => void) | null
   /** One page pull is in flight for this host. */
   pumping: boolean
-  /** A load just completed while resting at the top: keep paging. */
-  continueAfterRefresh: boolean
-  /** Pending continuation timer (cleared on release). */
-  pendingTimer: ReturnType<typeof setTimeout> | null
 }
 
 let sessionsService: SessionsServiceLike | undefined
@@ -67,8 +63,6 @@ export function setSessionsService(service: SessionsServiceLike | undefined): vo
 const SCROLL_HOST_SELECTOR = '[data-conversation-scroll]'
 /** Near-top tolerance in px. */
 const TOP_THRESHOLD = 4
-/** Fallback delay before the post-load continuation re-checks the top (ms). */
-const CONTINUE_DELAY_MS = 250
 
 async function fireLoadOlder(sessionId: string): Promise<void> {
   const sessions = sessionsService
@@ -92,8 +86,7 @@ async function fireLoadOlder(sessionId: string): Promise<void> {
  * seat's own element (the scroll host is resolved from it), the session id
  * and the current snapshot flags; returns a disposer. Multiple seats of the
  * same conversation share one listener (refcounted). Re-registration with
- * fresh snapshot flags refreshes the shared state — after a completed load
- * that can immediately continue paging while the user rests at the top.
+ * fresh snapshot flags refreshes the shared state.
  */
 export function attachAutoLoad(anchor: ElementLike | null, sessionId: string, hasMore: boolean, loadingOlder: boolean): () => void {
   const host = anchor === null || anchor === undefined || typeof anchor.closest !== 'function' ? null : (anchor.closest(SCROLL_HOST_SELECTOR) ?? null)
@@ -105,11 +98,9 @@ export function attachAutoLoad(anchor: ElementLike | null, sessionId: string, ha
     existing.hasMore = hasMore
     existing.loadingOlder = loadingOlder
     existing.owners += 1
-    // A load just completed while we were resting at the top: this re-attach
-    // carries the refreshed flags — continue paging (the fallback timer
-    // would too, but fresh state makes it immediate and correct).
-    if (existing.continueAfterRefresh && !existing.pumping && host.scrollTop <= TOP_THRESHOLD && existing.hasMore && !existing.loadingOlder) {
-      existing.continueAfterRefresh = false
+    // A re-attach with fresh flags: the snapshot just updated (loadingOlder
+    // flipped, hasMore changed). If still at the top with more history, pump.
+    if (!existing.pumping && host.scrollTop <= TOP_THRESHOLD && existing.hasMore && !existing.loadingOlder) {
       void pump(existing, host)
     }
     return () => {
@@ -125,8 +116,6 @@ export function attachAutoLoad(anchor: ElementLike | null, sessionId: string, ha
     detached: false,
     onScroll: null,
     pumping: false,
-    continueAfterRefresh: false,
-    pendingTimer: null,
   }
   attachedHosts.set(host, entry)
 
@@ -144,34 +133,24 @@ export function attachAutoLoad(anchor: ElementLike | null, sessionId: string, ha
     if (target.scrollTop > TOP_THRESHOLD) return
     if (!current.hasMore || current.loadingOlder) return
     current.pumping = true
-    current.continueAfterRefresh = false
     try {
       await fireLoadOlder(current.sessionId)
     } finally {
       current.pumping = false
     }
     if (current.detached) return
-    // Resting at the top after the load: keep paging. Yield a microtask so
-    // the snapshot has a chance to propagate (the re-attach with fresh flags
-    // will also trigger a pump via the existing branch), then re-check.
-    current.continueAfterRefresh = target.scrollTop <= TOP_THRESHOLD
-    if (!current.continueAfterRefresh) return
-    await new Promise((resolve) => queueMicrotask(resolve))
-    if (current.detached || current.pumping || !current.continueAfterRefresh) return
-    if (target.scrollTop > TOP_THRESHOLD || !current.hasMore || current.loadingOlder) {
-      current.continueAfterRefresh = false
-      return
+    // While the user rests at the top and more history exists, keep loading.
+    // The pump recurses directly — the `pumping` guard and the snapshot
+    // flags (refreshed on re-attach) prevent over-fetching.
+    if (target.scrollTop <= TOP_THRESHOLD && current.hasMore && !current.loadingOlder) {
+      void pump(current, target)
     }
-    current.continueAfterRefresh = false
-    void pump(current, target)
   }
 
   function release(target: ScrollHostLike, current: HostEntry): void {
     current.owners -= 1
     if (current.owners > 0 || current.detached) return
     current.detached = true
-    if (current.pendingTimer !== null) clearTimeout(current.pendingTimer)
-    current.pendingTimer = null
     attachedHosts.delete(target)
     if (current.onScroll !== null) target.removeEventListener('scroll', current.onScroll)
   }

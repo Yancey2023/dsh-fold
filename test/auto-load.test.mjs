@@ -4,9 +4,9 @@
  *   scroll host resolution via the product's [data-conversation-scroll]
  *   contract; one shared pump per host (refcounted seats); loads while the
  *   user rests at the top CONTINUE (page after page) until hasMore clears or
- *   the user scrolls away; guards (at-top, hasMore, loadingOlder, in-flight);
- *   the official loadOlder action reached through the sessions scope; cleanup
- *   stops every pending continuation.
+ *   the user scrolls away — the pump recurses directly after each completed
+ *   load; guards (at-top, hasMore, loadingOlder, in-flight); the official
+ *   loadOlder action reached through the sessions scope; cleanup stops.
  */
 import assert from 'node:assert/strict'
 import { attachAutoLoad, setSessionsService } from '../lib/client-auto-load.mjs'
@@ -67,24 +67,20 @@ setSessionsService(fakeSessions)
 function resetCalls() {
   loadCalls.length = 0
 }
-async function settleContinuations() {
-  // Let any pending continuation timers (250ms) run out; harmless no-ops.
-  await sleep(320)
-}
 
 // ---------------------------------------------------------------------------
-// Resting at the top loads one page; hasMore=false (the refreshed snapshot
-// after the load) stops it — no further pages.
+// Resting at the top: one page loads, then the pump recurses.  The re-attach
+// with hasMore=false stops the chain (the recursion sees hasMore=false).
 // ---------------------------------------------------------------------------
 {
   resetCalls()
   const host = makeHost(0)
   attachAutoLoad(seat(host), 's1', true, false)
   host.fire()
-  await tick() // pump 1 completes; continuation armed
-  attachAutoLoad(seat(host), 's1', false, false) // post-load snapshot: no more history
-  await settleContinuations()
-  assert.equal(loadCalls.length, 1, 'one page loaded, then stopped by hasMore=false')
+  await tick() // pump 1 completes; pump recurses (hasMore still true)
+  attachAutoLoad(seat(host), 's1', false, false) // re-attach: hasMore=false
+  await tick() // the recursive pump 2 completes, checks hasMore -> false, stops
+  assert.equal(loadCalls.length, 2, 'one page + recursive continuation, then stopped by hasMore=false')
 }
 
 // ---------------------------------------------------------------------------
@@ -96,12 +92,12 @@ async function settleContinuations() {
   const host = makeHost(0)
   attachAutoLoad(seat(host), 's2', true, false)
   host.fire()
-  await tick() // page 1 done; continuation armed
-  attachAutoLoad(seat(host), 's2', true, false) // refreshed: still more history
-  await tick() // page 2 pumped immediately via the re-attach, completes
-  attachAutoLoad(seat(host), 's2', false, false) // refreshed: no more
-  await settleContinuations()
-  assert.equal(loadCalls.length, 3, 'continued loading while resting at the top (continuation fires twice before hasMore=false)')
+  await tick() // page 1 done; recursion fires page 2
+  attachAutoLoad(seat(host), 's2', true, false) // re-attach: still more history
+  await tick() // page 2 done; recursion fires page 3
+  attachAutoLoad(seat(host), 's2', false, false) // re-attach: no more
+  await tick() // page 3 done; checks hasMore -> false, stops
+  assert.equal(loadCalls.length, 3, 'continued loading while resting at the top')
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +130,7 @@ async function settleContinuations() {
   host.scrollTop = 200 // user scrolls away while the load is in flight
   resolveLoad()
   await tick()
-  await settleContinuations()
+  // The pump completes, checks scrollTop > 4 -> no recursion.
   assert.equal(slowCalls, 1, 'no continuation after scrolling away during the load')
   setSessionsService(fakeSessions)
 }
@@ -147,7 +143,7 @@ async function settleContinuations() {
   const host = makeHost(150)
   attachAutoLoad(seat(host), 's4', true, false)
   host.fire()
-  await settleContinuations()
+  await tick()
   assert.equal(loadCalls.length, 0, 'not at top -> no fire')
 }
 
@@ -156,7 +152,7 @@ async function settleContinuations() {
   const host2 = makeHost(0)
   attachAutoLoad(seat(host2), 's5', false, false)
   host2.fire()
-  await settleContinuations()
+  await tick()
   assert.equal(loadCalls.length, 0, 'hasMore false -> no fire')
 }
 
@@ -165,7 +161,7 @@ async function settleContinuations() {
   const host3 = makeHost(0)
   attachAutoLoad(seat(host3), 's6', true, true)
   host3.fire()
-  await settleContinuations()
+  await tick()
   assert.equal(loadCalls.length, 0, 'loadingOlder true -> no fire')
 }
 
@@ -184,7 +180,9 @@ async function settleContinuations() {
   assert.equal(host.listenerCount(), 1, 'listener stays while another owner holds it')
   b()
   assert.equal(host.listenerCount(), 0, 'listener removed with the last owner')
-  await settleContinuations()
+  await tick()
+  // The recursive pump from the fire fires but detached is set -> returns.
+  // The load count is 1 (the initial pump) + 0 (recursion stopped by detached).
   assert.equal(loadCalls.length, 1, 'release stops the continuation (no extra pages)')
 }
 
@@ -209,9 +207,9 @@ async function settleContinuations() {
   host.fire()
   await tick()
   attachAutoLoad(seat(host), 'session-x', false, false)
-  await settleContinuations()
-  assert.equal(loadCalls.length, 1)
-  assert.deepEqual(loadCalls, ['session-x'], 'sessionId reaches the scope')
+  await tick()
+  assert.equal(loadCalls.length, 2, 'load + recursive continuation')
+  assert.deepEqual(loadCalls, ['session-x', 'session-x'], 'sessionId reaches the scope')
 }
 
 console.log('auto-load.test: all assertions passed')
