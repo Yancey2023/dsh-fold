@@ -57,7 +57,7 @@ await import(new URL('../lib/client.js', import.meta.url).href + '?smoke=' + Dat
 
 assert.ok(registeredPlugin, 'bundle must register via __ModuleLoader__.load')
 assert.equal(registeredPlugin.name, 'tool-group')
-assert.deepEqual(registeredPlugin.inject, ['slots', 'locale'])
+assert.deepEqual(registeredPlugin.inject, ['slots', 'locale', 'sessions'])
 assert.equal(typeof registeredPlugin.apply, 'function')
 
 // --- apply() against a fake ctx -------------------------------------------

@@ -28,6 +28,7 @@
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { AssistantNodeWrapper, setSlotsService } from './AssistantNodeWrapper'
 import { setGroupT } from './translate'
+import { setSessionsService } from './auto-load'
 import { ToolCallGroupView } from './ToolCallGroupView'
 import { UserNodeWrapper } from './UserNodeWrapper'
 import { NoticeNodeWrapper } from './NoticeNodeWrapper'
@@ -41,7 +42,7 @@ const DICTS: Record<'zh' | 'en', Record<string, string>> = {
 }
 
 export const name = 'tool-group'
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'sessions']
 
 type LocaleFace = {
   register(ns: string, dicts: Record<string, Record<string, string>>): () => void
@@ -70,6 +71,9 @@ export function apply(ctx: {
   //     and binds its own tool-group translate for think-only folded bars.
   setSlotsService(slots)
   setGroupT(locale.bind('tool-group'))
+  // 1c. The sessions service powers scroll-to-top auto-load-older (the
+  //     official loadOlder action is reached through the session scope).
+  setSessionsService(ctx.get('sessions') as { scope(id: string): { get(name: string): unknown } | undefined } | undefined)
 
   // 2. Locale dictionaries.
   ctx.effect(() => locale.register('tool-group', DICTS), 'dsh-tool-group: dictionaries')

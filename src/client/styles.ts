@@ -138,9 +138,12 @@ export const CSS = `
 .dshUserRow{flex-direction:column;align-items:flex-end;gap:6px;display:flex}
 .dshUserStack{flex-direction:column;align-items:flex-end;gap:8px;min-width:0;max-width:min(525px,82%);display:flex}
 .dshUserBubble{background:var(--dsw-specific-bubble);max-width:100%;color:var(--dsw-alias-label-primary);border-radius:22px;padding:10px 16px;font-size:16px;line-height:24px}
-.dshUserBubble[data-clamped]{
+/* The clamp lives on a PADDING-FREE inner box so every browser renders
+   exactly 3 lines and keeps the bubble's 10px bottom gap: max-height:72px
+   is 3 × 24px and clips any partial line a legacy line-clamp would show. */
+.dshUserBubbleClamp[data-clamped]{
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
-  overflow:hidden;
+  overflow:hidden;max-height:72px;
 }
 .dshUserRefChip{
   color:var(--dsw-alias-label-primary);white-space:nowrap;vertical-align:baseline;

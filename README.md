@@ -79,17 +79,30 @@ official primitives).
   (turn-error, max-tokens, model-retry) intentionally remain visible
   diagnostics.
 - **User input**: a user message whose text overflows 3 lines is clamped to
-  3 lines (`-webkit-line-clamp`, exactly 3 × 24px lines) with a
-  `展开` / `Expand` toggle below the bubble (shown only when the text really
-  overflows, measured via ResizeObserver). The bubble is a faithful replica
-  of the product's `UserStyleBubble` built from **official primitives**
+  3 lines with a `展开` / `Expand` toggle below the bubble (shown only when
+  the text really overflows, measured via ResizeObserver). The clamp lives
+  on a PADDING-FREE inner box (`max-height: 72px` = exactly 3 × 24px line
+  height), so every browser renders exactly 3 lines with the bubble's
+  bottom gap intact — browsers whose legacy line-clamp behavior would show
+  a partial 4th line flush against the bubble bottom get clipped to 3 lines
+  (verified in headless Chromium). The bubble is a faithful replica of the
+  product's `UserStyleBubble` built from **official primitives**
   (`MessageText`, ref chips for `/name` `@name` tokens, `JsonBlock` extras,
   the official `ImageGallery`, the product time + copy actions with the
   official `writeClipboard`) — replication, not delegation, because
   Chromium's line-clamp does not clamp content inside a nested flex
   container (the official row is `display:flex`; verified empirically in
-  headless Chromium). Clamping our own bubble clamps exactly to 3 lines.
-  Short messages render untouched (clamp is a no-op, toggle hidden).
+  headless Chromium). Short messages render untouched (clamp is a no-op,
+  toggle hidden).
+- **Auto-load older at the top**: scrolling the conversation to the very
+  top while older history exists automatically pulls the next page
+  (`loadOlder`) — no button click needed; the product's 加载更早 button
+  remains as a manual fallback. The scroll host is resolved through the
+  product's own `scrollerOf` contract (`[data-conversation-scroll]`), the
+  action is the session scope's official `conversation.loadOlder()`, and
+  guards (near-top threshold, `hasMore`, `loadingOlder`, in-flight) prevent
+  duplicate or mid-scroll loads. This is the one behavioral DOM read in the
+  plugin (a passive scroll listener); nothing is patched or restyled.
 
 ## DSH version
 
@@ -200,7 +213,7 @@ owned by the plugin fiber / ctx.effect).
 ```bash
 pnpm install          # esbuild, typescript, @types/react, react, ui-slots (devDeps)
 pnpm build            # tsc --noEmit + esbuild bundles (lib/)
-pnpm test             # 12 suites: group · tool-row · turn-fold · overlay (real ui-slots) · bundle smoke · component · assistant · user · notice · integration
+pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold · overlay (real ui-slots) · bundle smoke · component · assistant · user · notice · integration
 ```
 
 ## Acceptance mapping
@@ -225,6 +238,9 @@ pnpm test             # 12 suites: group · tool-row · turn-fold · overlay (re
 | 16 streaming think (no tool yet) | bar shows `Think · <latest line>` |
 | 17 all settled | bar left side empty |
 | 18 compaction/context/命令 | folded (`1 个块已被折叠`), inside the big fold when closed |
+| 19 long user input, legacy clamp | still exactly 3 lines + bottom gap (padding-free clamp box) |
+| 20 scroll to top with older history | auto-loads the next page (no click), once per scroll-to-top |
+| 21 mid-scroll / no history / loading | no auto-load |
 
 ## Known limitations
 
@@ -263,6 +279,8 @@ pnpm test             # 12 suites: group · tool-row · turn-fold · overlay (re
 src/client/group.ts               pure grouping over the snapshot (unit-tested)
 src/client/turn-fold.ts           turn-level big fold over the snapshot (unit-tested)
 src/client/tool-row.ts            running-tool row model (product toolRowModel replica)
+src/client/auto-load.ts           scroll-to-top auto-load-older (sessions scope)
+src/client/AutoLoadHost.tsx       seat ref anchor wiring seats into the auto-loader
 src/client/ToolCallGroupView.tsx  group row (live block content) + official members
 src/client/AssistantNodeWrapper.tsx assistant-step shadow (official delegation)
 src/client/UserNodeWrapper.tsx    user bubble replica + 3-line clamp + toggle
@@ -277,7 +295,7 @@ src/host/index.ts                 minimal host anchor
 cordis.patch.yml                  bundle patch layer (host row)
 build.mjs                         tsc + esbuild
 scripts/install-dsh.cjs           install/uninstall helper
-test/                             group · tool-row · turn-fold · overlay · bundle-smoke · render suites
+test/                             group · tool-row · auto-load · turn-fold · overlay · bundle-smoke · render suites
 docs/core-patch.md                the one core change, as a source patch
 ```
 

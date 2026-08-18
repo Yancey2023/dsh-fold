@@ -35,6 +35,7 @@ import { ImageGallery } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { MessageImageLabels } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { getGroupT } from './translate'
+import { AutoLoadHost } from './AutoLoadHost'
 
 export interface UserNodeWrapperProps {
   /** The user node owned by this seat. */
@@ -46,6 +47,10 @@ export interface UserNodeWrapperProps {
   loadImage?: (attachment: ImageAttachmentRef) => Promise<string>
   /** Conversation-namespace translate (entry locale `conversation`). */
   t?: (key: string, params?: Record<string, unknown>) => string
+  /** Session id (big-fold state is keyed per session; auto-load scope). */
+  sessionId?: string
+  /** Framework session selector hook. */
+  useSession: <S>(sel: (snapshot: { hasMore?: boolean; loadingOlder?: boolean }) => S, eq?: (a: S, b: S) => boolean) => S
   /** Everything else the renderer passed (unused, but must be accepted). */
   [key: string]: unknown
 }
@@ -162,14 +167,14 @@ function CopyAction({ text, t }: { text: string; t: Translate }): React.ReactEle
 
 /** The user seat: product bubble replica + 3-line clamp + fold toggle. */
 export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNodeWrapperProps): React.ReactElement | null {
-  const { node, loadImage, t } = props
+  const { node, loadImage, t, sessionId, useSession } = props
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const [expanded, setExpanded] = React.useState(false)
-  const bubbleRef = React.useRef<HTMLDivElement | null>(null)
+  const clampRef = React.useRef<HTMLDivElement | null>(null)
   const [overflowing, setOverflowing] = React.useState(false)
   React.useEffect(() => {
-    const el = bubbleRef.current
+    const el = clampRef.current
     if (el === null) return
     // scrollHeight > clientHeight while the clamp is applied means the text
     // exceeds 3 lines (verified in Chromium: clamped clientHeight is exactly
@@ -182,6 +187,8 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
     return () => observer.disconnect()
   }, [expanded])
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
+  const hasMore = typeof useSession === 'function' ? useSession((snapshot) => snapshot.hasMore === true) : false
+  const loadingOlder = typeof useSession === 'function' ? useSession((snapshot) => snapshot.loadingOlder === true) : false
 
   const data = (node.data ?? {}) as { content?: unknown; time?: number }
   const rawContent = data.content
@@ -193,7 +200,7 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
   const labels = imageLabels(translate)
   const showToggle = expanded || overflowing
 
-  return React.createElement(
+  const output = React.createElement(
     'div',
     { className: 'dshUserRow', 'data-time-hover-root': '' },
     React.createElement(
@@ -210,15 +217,23 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
       showBubble
         ? React.createElement(
             'div',
-            { ref: bubbleRef, className: 'dshUserBubble', 'data-clamped': expanded ? undefined : '' },
-            text !== '' ? projectUserText(text) : null,
-            ...rest.map((block, index) =>
-              React.createElement(JsonBlock, {
-                key: `extra${index}`,
-                label: translate('message.extraBlock'),
-                payload: block,
-                truncatedLabel: (total: number) => translate('json.truncated', { total }),
-              }),
+            { className: 'dshUserBubble' },
+            // The clamp lives on a PADDING-FREE inner box: browsers that cut
+            // the clamp height short of the bottom padding (legacy line-clamp
+            // behavior) can still never show a partial 4th line or eat the
+            // bubble's bottom gap — max-height:72px is exactly 3 × 24px.
+            React.createElement(
+              'div',
+              { ref: clampRef, className: 'dshUserBubbleClamp', 'data-clamped': expanded ? undefined : '' },
+              text !== '' ? projectUserText(text) : null,
+              ...rest.map((block, index) =>
+                React.createElement(JsonBlock, {
+                  key: `extra${index}`,
+                  label: translate('message.extraBlock'),
+                  payload: block,
+                  truncatedLabel: (total: number) => translate('json.truncated', { total }),
+                }),
+              ),
             ),
           )
         : null,
@@ -246,4 +261,5 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
       React.createElement(CopyAction, { key: 'copy', text, t: translate }),
     ),
   )
+  return React.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output)
 })

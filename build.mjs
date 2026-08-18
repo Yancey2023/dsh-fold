@@ -84,6 +84,17 @@ await build({
   logLevel: 'info',
 })
 
+// ESM mirror of the scroll-to-top auto-loader, for node-based unit tests.
+await build({
+  entryPoints: ['src/client/auto-load.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node18',
+  outfile: 'lib/client-auto-load.mjs',
+  logLevel: 'info',
+})
+
 // ESM mirror of the group view component (icons stubbed), for render tests.
 await build({
   entryPoints: ['src/client/ToolCallGroupView.tsx'],
@@ -152,4 +163,4 @@ await build({
   logLevel: 'info',
 })
 
-console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-tool-row.mjs, lib/client-component.mjs, lib/client-assistant.mjs, lib/client-user.mjs, lib/client-notice.mjs, lib/client-turn-fold.mjs')
+console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-tool-row.mjs, lib/client-auto-load.mjs, lib/client-component.mjs, lib/client-assistant.mjs, lib/client-user.mjs, lib/client-notice.mjs, lib/client-turn-fold.mjs')

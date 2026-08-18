@@ -27,6 +27,7 @@ import { eqGroup, groupOf, isGroupLeader, isTransparentAssistant } from './group
 import type { AssistantBlockLike } from './group'
 import type { ChatNodeLike } from './group'
 import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
+import { AutoLoadHost } from './AutoLoadHost'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 import { getGroupT } from './translate'
 import { officialNodeEntry } from './registry'
@@ -37,7 +38,15 @@ export interface AssistantNodeWrapperProps {
   /** The assistant-step node owned by this seat. */
   node: ChatNodeLike
   /** Framework session selector hook. */
-  useSession: <S>(sel: (snapshot: { chat: { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } } }) => S, eq?: (a: S, b: S) => boolean) => S
+  useSession: <S>(
+    sel: (snapshot: {
+      chat: { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } }
+      turnEnds?: ReadonlyMap<number, number>
+      hasMore?: boolean
+      loadingOlder?: boolean
+    }) => S,
+    eq?: (a: S, b: S) => boolean,
+  ) => S
   /** Session id (big-fold state is keyed per session). */
   sessionId?: string
   /** Everything else the renderer passed (delegated to the official view). */
@@ -75,6 +84,8 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
   // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => (isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null), eqGroup)
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
+  const hasMore = useSession((snapshot) => snapshot.hasMore === true)
+  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
   const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
@@ -112,35 +123,39 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
         )
       : null
 
+  let output: React.ReactNode
   // The turn's final summary: official text, never folded.
   if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
-    return renderOfficial(props)
-  }
-
-  // A process node of a closed, summarized turn: hidden behind the big fold
-  // (only the first seat renders the big fold bar).
-  if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+    output = renderOfficial(props)
+  } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+    // A process node of a closed, summarized turn: hidden behind the big fold
+    // (only the first seat renders the big fold bar).
     const first = node.key === turnInfo.firstKey
     if (!turnExpanded) {
-      return first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
+      output = first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
+    } else {
+      const content = group === null ? renderOfficial(props) : thinkContent
+      if (content === null) {
+        // Non-leader think member while the big fold is expanded: still nothing
+        // to render — mark the seat so its flowItem leaves no gap.
+        output = first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
+      } else {
+        output = React.createElement(
+          React.Fragment,
+          null,
+          first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+          content,
+        )
+      }
     }
-    const content = group === null ? renderOfficial(props) : thinkContent
-    if (content === null) {
-      // Non-leader think member while the big fold is expanded: still nothing
-      // to render — mark the seat so its flowItem leaves no gap.
-      return first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
-    }
-    return React.createElement(
-      React.Fragment,
-      null,
-      first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-      content,
-    )
+  } else if (group === null) {
+    // No big fold: current behavior. Non-leader think seats fold to nothing
+    // (marked so the flowItem is hidden instead of leaving a gap).
+    output = renderOfficial(props)
+  } else if (thinkContent === null) {
+    output = React.createElement(FoldedSeat, null)
+  } else {
+    output = thinkContent
   }
-
-  // No big fold: current behavior. Non-leader think seats fold to nothing
-  // (marked so the flowItem is hidden instead of leaving a gap).
-  if (group === null) return renderOfficial(props)
-  if (thinkContent === null) return React.createElement(FoldedSeat, null)
-  return thinkContent
+  return React.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output)
 })

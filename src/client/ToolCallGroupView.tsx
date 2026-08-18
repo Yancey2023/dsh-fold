@@ -35,6 +35,7 @@ import {
 import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
 import { runningToolRow } from './tool-row'
+import { AutoLoadHost } from './AutoLoadHost'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
@@ -58,7 +59,15 @@ export interface ToolCallGroupViewProps {
   /** The tool-call node owned by this seat. */
   node: ChatNodeLike
   /** Framework session selector hook. */
-  useSession: <S>(sel: (snapshot: { chat: { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } } }) => S, eq?: (a: S, b: S) => boolean) => S
+  useSession: <S>(
+    sel: (snapshot: {
+      chat: { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } }
+      turnEnds?: ReadonlyMap<number, number>
+      hasMore?: boolean
+      loadingOlder?: boolean
+    }) => S,
+    eq?: (a: S, b: S) => boolean,
+  ) => S
   /** Child-slot dispatch face (declared via this entry's children table). */
   renderSlot: RenderSlot
   /** Selected call id (details panel highlight). */
@@ -402,6 +411,8 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
+  const hasMore = useSession((snapshot) => snapshot.hasMore === true)
+  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
   const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
@@ -426,30 +437,34 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
     [turnToggle],
   )
 
+  let output: React.ReactNode
   if (group === null || !isGroupLeader(group, node.key)) {
     // Non-leader / non-group seat: folded to nothing (mark so the flowItem
     // is hidden instead of leaving a gap).
-    return React.createElement(FoldedSeat, null)
-  }
-
-  const small = React.createElement(
-    'div',
-    { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': group.runningItem === undefined ? 'settled' : 'running' } as unknown as React.HTMLAttributes<HTMLDivElement>,
-    React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd }),
-    expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
-  )
-
-  if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-    const first = node.key === turnInfo.firstKey
-    if (!turnExpanded) {
-      return first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
-    }
-    return React.createElement(
-      React.Fragment,
-      null,
-      first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-      turnExpanded ? small : null,
+    output = React.createElement(FoldedSeat, null)
+  } else {
+    const small = React.createElement(
+      'div',
+      { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': group.runningItem === undefined ? 'settled' : 'running' } as unknown as React.HTMLAttributes<HTMLDivElement>,
+      React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd }),
+      expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
     )
+
+    if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+      const first = node.key === turnInfo.firstKey
+      if (!turnExpanded) {
+        output = first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
+      } else {
+        output = React.createElement(
+          React.Fragment,
+          null,
+          first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+          turnExpanded ? small : null,
+        )
+      }
+    } else {
+      output = small
+    }
   }
-  return small
+  return React.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output)
 })

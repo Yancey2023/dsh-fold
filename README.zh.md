@@ -13,7 +13,8 @@
 - **折叠条文案**：折叠条显示 `N 个块已被折叠`——N 为折叠块数（工具调用 + 随组折叠的 Think 行；block 内部的 subcall 不重复计数）。运行中左侧显示 `正在运行 <工具>`。
 - **折叠条内显示真实块**：折叠的块正在输出/工作时，折叠行左侧显示**块本身**（产品自身折叠行模型的复刻），而不是简单的 `正在运行 <工具>` 标签：流式 Think 行显示 `[Think] · <最新行>`；工作中的工具调用显示其真实行（terminal 调用为 `[icon] Bash · <命令描述>`，以及 `Read · <路径>`、`Search · <查询>`、`ask_user_question · <问题>`……即产品 `toolRowModel` 的逐字复刻）。运行中的工具优先于其前面仍处于 running 态的 Think 行；调用结束后自动切换到下一个工作项，全部结束后左侧留空；运行中整行带产品同款扫光动画。
 - **非文本块也折叠**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）和用户命令如 `/permission`（`command`）与其他工作块一样折叠——未结束轮次中各折成自己的 `1 个块已被折叠` 条；轮次以总结结束后并入轮次级大折叠。只有纯文本（用户/steering 消息、assistant 正文、总结）保持可见；错误/限额提示（turn-error、max-tokens、model-retry）刻意保持可见（诊断信息不能藏起来）。
-- **用户输入**：文本超过 3 行的用户消息被钳制到 3 行（`-webkit-line-clamp`，恰好 3 × 24px 行高），气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（`MessageText`、`/name` `@name` ref chip、`JsonBlock` 附加块、官方 `ImageGallery`、产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）；钳制我们自己的气泡元素可精确到 3 行。短消息原样渲染（clamp 无效果、按钮隐藏）。
+- **用户输入**：文本超过 3 行的用户消息被钳制到 3 行，气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。钳制发生在**无 padding 的内层盒**上（`max-height: 72px` = 恰好 3 × 24px 行高）：任何浏览器都精确渲染 3 行并保留气泡底部空隙——旧式 line-clamp 行为（会露出半行第 4 行并吃掉底部 padding）被 max-height 硬切掉（headless Chromium 实证）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（`MessageText`、`/name` `@name` ref chip、`JsonBlock` 附加块、官方 `ImageGallery`、产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）。短消息原样渲染（clamp 无效果、按钮隐藏）。
+- **滑到顶部自动加载更早**：滚动到对话最顶部且存在更早历史时自动拉取下一页（`loadOlder`），无需点击按钮；产品的"加载更早"按钮保留作手动兜底。滚动容器通过产品自身的 `scrollerOf` 契约（`[data-conversation-scroll]`）解析，动作走会话作用域的官方 `conversation.loadOlder()`；阈值、`hasMore`、`loadingOlder`、in-flight 等守卫防止重复或滚动中途误触发。这是插件唯一一处行为性 DOM 读取（被动 scroll 监听），不做任何修补或改样式。
 
 ## DSH 版本
 
@@ -76,7 +77,7 @@ dsh plugin --profile web remove dsh-tool-group
 
 ```bash
 pnpm install && pnpm build   # tsc --noEmit + esbuild（lib/）
-pnpm test                    # 12 套：分组 · tool-row · 大折叠 · overlay（真实 ui-slots）· bundle 冒烟 · 组件 · assistant · user · notice · 完整 slot 管线
+pnpm test                    # 13 套：分组 · tool-row · 自动加载 · 大折叠 · overlay（真实 ui-slots）· bundle 冒烟 · 组件 · assistant · user · notice · 完整 slot 管线
 ```
 
 ## 验收映射
@@ -101,6 +102,9 @@ pnpm test                    # 12 套：分组 · tool-row · 大折叠 · overl
 | 16 仅 Think 流式（尚无工具） | 条内显示 `Think · <最新行>` |
 | 17 全部完成 | 折叠条左侧空白 |
 | 18 压缩/注入/命令块 | 折叠为 `1 个块已被折叠`，轮次结束后并入大折叠 |
+| 19 旧式 line-clamp 浏览器 | 仍是恰好 3 行 + 底部空隙（无 padding 钳制盒） |
+| 20 滑到顶部且有更早历史 | 自动加载下一页（无需点击），每次滚顶只触发一次 |
+| 21 中途/无历史/加载中 | 不自动加载 |
 
 ## 已知限制
 
@@ -118,6 +122,8 @@ pnpm test                    # 12 套：分组 · tool-row · 大折叠 · overl
 src/client/group.ts              纯分组逻辑（有单测）
 src/client/turn-fold.ts          轮次级大折叠（有单测）
 src/client/tool-row.ts           运行中工具行模型（产品 toolRowModel 复刻）
+src/client/auto-load.ts          滑顶自动加载更早（sessions 作用域）
+src/client/AutoLoadHost.tsx      座位 ref 锚点，接入自动加载器
 src/client/ToolCallGroupView.tsx 组行（真实块内容）+ 官方成员渲染
 src/client/AssistantNodeWrapper.tsx assistant-step 阴影（委托官方）
 src/client/UserNodeWrapper.tsx   用户气泡复刻 + 3 行钳制 + 展开/收起
@@ -132,7 +138,7 @@ src/host/index.ts                最小 host 锚点
 cordis.patch.yml                 bundle patch 层（host 行）
 build.mjs                        tsc + esbuild
 scripts/install-dsh.cjs          安装/卸载脚本
-test/                            分组 · tool-row · 大折叠 · overlay · bundle 冒烟 · 渲染套件
+test/                            分组 · tool-row · 自动加载 · 大折叠 · overlay · bundle 冒烟 · 渲染套件
 docs/core-patch.md               唯一 core 改动（源码级 patch）
 ```
 
