@@ -4,7 +4,7 @@
  * transparency rule.
  */
 import assert from 'node:assert/strict'
-import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant, isAssistantGrouped } from '../lib/client-group.mjs'
+import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant } from '../lib/client-group.mjs'
 
 /** Build a snapshot node. */
 function toolNode(key, turn, root) {
@@ -88,7 +88,7 @@ function snapshot(order, nodes) {
     [assistantNode('a1', 1, [think('first reasoning')]), toolNode('t1', 1, settled('read')), assistantNode('a2', 1, [think('second reasoning')]), toolNode('t2', 1, running('grep'))],
   )
   const g = groupOf(s, 't1')
-  assert.equal(g.count, 2, 'tools merge across reasoning')
+  assert.equal(g.count, 4, 'folded-block count = tools + think rows')
   assert.equal(callName(g.running), 'grep')
   assert.deepEqual([...g.itemKeys], ['a1', 't1', 'a2', 't2'], 'think rows folded into the run')
   assert.deepEqual(
@@ -98,8 +98,8 @@ function snapshot(order, nodes) {
   )
   assert.ok(isGroupLeader(g, 't1'), 'leader is the first TOOL')
   assert.ok(isTransparentAssistant(s.nodes.get('a1')), 'reasoning-only node is transparent')
-  assert.equal(isAssistantGrouped(s, 'a1'), true, 'transparent node absorbed by the group')
-  assert.equal(isAssistantGrouped(s, 'a2'), true)
+  assert.equal(isGroupLeader(groupOf(s, 'a1'), 'a1'), false, 'non-leader think seat is not the leader')
+  assert.equal(isGroupLeader(groupOf(s, 'a2'), 'a2'), false, 'non-leader think seat is not the leader')
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ function snapshot(order, nodes) {
     [toolNode('t1', 1, settled('read')), assistantNode('a2', 1, [think('streaming')], 'running'), toolNode('t2', 1, running('grep'))],
   )
   const g = groupOf(s, 't1')
-  assert.equal(g.count, 2, 'running think row does not split the chain')
+  assert.equal(g.count, 3, 'running think row does not split the chain (folded blocks count)')
   assert.equal(callName(g.running), 'grep')
 }
 
@@ -190,7 +190,7 @@ function snapshot(order, nodes) {
   const mutated = snapshot(['a1', 't1', 't2', 't3'], [...s.nodes.values(), toolNode('t3', 1, running('bash'))])
   const gMore = groupOf(mutated, 't1')
   assert.equal(eqGroup(g, gMore), false, 'appended member changes the group')
-  assert.equal(gMore.count, 3)
+  assert.equal(gMore.count, 4)
 }
 
 // ---------------------------------------------------------------------------
@@ -204,11 +204,39 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// A transparent assistant NOT adjacent to tools is standalone (not grouped).
+// THINK-ONLY GROUPS: transparent assistants with no adjacent tools fold into
+// their own bar, led by the first transparent node.
 // ---------------------------------------------------------------------------
 {
   const s = snapshot(['a1'], [assistantNode('a1', 1, [think('standalone reasoning')])])
-  assert.equal(isAssistantGrouped(s, 'a1'), false, 'standalone think row is not absorbed')
+  const g = groupOf(s, 'a1')
+  assert.ok(g && isGroupLeader(g, 'a1'), 'standalone think row leads its own group')
+  assert.equal(g.count, 1)
+  assert.equal(g.running, undefined)
+  assert.deepEqual(g.items.map((i) => i.kind), ['think'])
+}
+
+{
+  const s = snapshot(
+    ['a1', 'a2'],
+    [assistantNode('a1', 1, [think('first')]), assistantNode('a2', 1, [think('second')])],
+  )
+  const g = groupOf(s, 'a1')
+  assert.ok(g && isGroupLeader(g, 'a1'), 'consecutive think rows merge into one group')
+  assert.equal(g.count, 2)
+  assert.deepEqual([...g.itemKeys], ['a1', 'a2'])
+}
+
+// Text still bounds think-only groups: [think] | text | [think] -> two bars.
+{
+  const s = snapshot(
+    ['a1', 'txt', 'a2'],
+    [assistantNode('a1', 1, [think('first')]), assistantNode('txt', 1, [textBlock('正文')]), assistantNode('a2', 1, [think('second')])],
+  )
+  const g1 = groupOf(s, 'a1')
+  const g2 = groupOf(s, 'a2')
+  assert.deepEqual([...g1.itemKeys], ['a1'])
+  assert.deepEqual([...g2.itemKeys], ['a2'])
 }
 
 console.log('group.test: all assertions passed')

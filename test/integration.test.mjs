@@ -15,7 +15,7 @@ import { create, act } from 'react-test-renderer'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { installSlotCoreOverlay } from '../lib/client-overlay.mjs'
 import { ToolCallGroupView } from '../lib/client-component.mjs'
-import { AssistantNodeWrapper, setSlotsService } from '../lib/client-assistant.mjs'
+import { AssistantNodeWrapper, setGroupT, setSlotsService } from '../lib/client-assistant.mjs'
 
 function cellWinner(core, slotKey, entryKey) {
   const rec = core.records.get(slotKey)
@@ -28,7 +28,10 @@ function cellWinner(core, slotKey, entryKey) {
 
 /** Emulates the web-react renderer's standardKit + keyed dispatch. */
 function renderer(core, session, dicts) {
-  const t = (key) => dicts[key] ?? key
+  const t = (key, params) => {
+    const template = dicts[key] ?? key
+    return params ? template.replace(/\{(\w+)\}/g, (_m, n) => String(params[n] ?? '')) : template
+  }
   return (slotKey, entry, ownerProps) => {
     const kit = {
       ...ownerProps,
@@ -110,8 +113,13 @@ setSlotsService({
     return core.records.get(key).entries
   },
 })
+setGroupT((key, params) => {
+  const dict = { running: '正在运行', folded: '{count} 个块已被折叠' }
+  const template = dict[key] ?? key
+  return params ? template.replace(/\{(\w+)\}/g, (_m, n) => String(params[n] ?? '')) : template
+})
 
-const dicts = { running: '正在运行', group: '工具调用组' }
+const dicts = { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' }
 const session = {
   chat: {
     order: ['t1', 't2', 't3'],
@@ -133,7 +141,7 @@ const render = renderer(core, session, dicts)
   const root = create(render('conversation.chat.node', shadowEntry, { node, selectedCallId: undefined, cwd: '/ws', openFile: () => {}, inspectCall: () => {} }))
   const text = textOf(root.toJSON())
   assert.ok(text.includes('正在运行') && text.includes('bash'), 'running label')
-  assert.ok(text.includes('3'), 'count 3')
+  assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   assert.ok(!text.includes('OFFICIAL_TREE'), 'official tree hidden')
 
   // Expand: members delegate through tool.call.toolview (bash card official).
@@ -160,7 +168,7 @@ const render = renderer(core, session, dicts)
   const root = create(renderer(core, settledSession, dicts)('conversation.chat.node', shadowEntry, { node, cwd: '/ws', openFile: () => {}, inspectCall: () => {} }))
   const text = textOf(root.toJSON())
   assert.ok(!text.includes('正在运行'), 'left side empty')
-  assert.ok(text.includes('3'), 'count')
+  assert.ok(text.includes('3 个块已被折叠'), 'folded label')
   root.unmount()
 }
 
@@ -198,7 +206,7 @@ const render = renderer(core, session, dicts)
   assert.equal(r2.toJSON(), 'OFFICIAL_ASSISTANT', 'text-bearing assistant delegates to the official view')
   r2.unmount()
 
-  // standalone transparent -> official (think row visible without tools)
+  // standalone transparent -> folded into its own bar (think-only group)
   const standaloneSession = {
     chat: {
       order: ['a1'],
@@ -206,7 +214,9 @@ const render = renderer(core, session, dicts)
     },
   }
   const r3 = create(renderer(core, standaloneSession, dicts)('conversation.chat.node', assistantEntry, { node: standaloneSession.chat.nodes.get('a1') }))
-  assert.equal(r3.toJSON(), 'OFFICIAL_ASSISTANT', 'standalone think row delegates to the official view')
+  const r3Text = textOf(r3.toJSON())
+  assert.ok(r3Text.includes('1 个块已被折叠'), 'standalone think row folds into a bar')
+  assert.ok(!r3Text.includes('standalone'), 'think text hidden while collapsed')
   r3.unmount()
 }
 

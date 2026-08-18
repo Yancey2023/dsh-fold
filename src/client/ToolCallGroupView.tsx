@@ -31,7 +31,7 @@ import {
   IconThinkOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock } from './group'
-import type { ChatNodeLike, GroupItem, ToolBlockLike } from './group'
+import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
 type RenderSlot = (
@@ -243,35 +243,29 @@ function ThinkItem({ item, t }: { item: GroupItem & { kind: 'think' }; t: ToolCa
   )
 }
 
-/** The group row itself (collapsed bar + optional expanded items). */
-export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: ToolCallGroupViewProps): React.ReactElement | null {
-  const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t } = props
-  const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
-  const [expanded, setExpanded] = React.useState(false)
+export interface GroupBarProps {
+  group: ToolGroup
+  expanded: boolean
+  onToggle: () => void
+  onKeyDown: (event: React.KeyboardEvent) => void
+  t: (key: string, params?: Record<string, unknown>) => string
+}
 
-  if (group === null || !isGroupLeader(group, node.key)) return null
-
+/** The one-line folded bar: [running tool name?] [N 个块已被折叠] [chevron]. */
+export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle, onKeyDown, t }: GroupBarProps): React.ReactElement {
   const runningName = isRunningBlock(group.running) ? group.running.name : null
-  const toggle = React.useCallback(() => setExpanded((value) => !value), [])
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      setExpanded((value) => !value)
-    }
-  }
-
   const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
     className: 'dshToolGroupChevron',
   })
-  const bar = React.createElement(
+  return React.createElement(
     'div',
     {
       className: 'dshToolGroupRow',
       role: 'button',
       tabIndex: 0,
       'aria-expanded': expanded,
-      'aria-label': `${t('group')} ${group.count}`,
-      onClick: toggle,
+      'aria-label': t('folded', { count: group.count }),
+      onClick: onToggle,
       onKeyDown,
     },
     React.createElement(
@@ -284,12 +278,26 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
     React.createElement(
       'div',
       { className: 'dshToolGroupRight' },
-      React.createElement('span', { className: 'dshToolGroupCount' }, String(group.count)),
+      React.createElement('span', { className: 'dshToolGroupCount' }, t('folded', { count: group.count })),
       chevron,
     ),
   )
+})
 
-  const items = React.createElement(
+export interface GroupItemsProps {
+  group: ToolGroup
+  t: (key: string, params?: Record<string, unknown>) => string
+  renderSlot?: RenderSlot
+  selectedCallId?: string
+  cwd?: string
+  openFile?: (path: string) => void
+  inspectCall?: (callId: string) => void
+}
+
+/** Expanded contents: think rows and official tool cards in execution order. */
+export const GroupItems = React.memo(function GroupItems(props: GroupItemsProps): React.ReactElement {
+  const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall } = props
+  return React.createElement(
     'div',
     { className: 'dshToolGroupItems' },
     group.items.map((item) => {
@@ -297,7 +305,7 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
         return React.createElement(ThinkItem, { key: item.key, item, t })
       }
       const root = item.node.data?.root
-      if (root === undefined) return null
+      if (root === undefined || renderSlot === undefined || openFile === undefined || inspectCall === undefined) return null
       return React.createElement(ToolCallBranch, {
         key: item.key,
         renderSlot,
@@ -310,11 +318,29 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
       })
     }),
   )
+})
+
+/** The tool-call seat: only the group's first TOOL leader renders (bar + items). */
+export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: ToolCallGroupViewProps): React.ReactElement | null {
+  const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t } = props
+  const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
+  const [expanded, setExpanded] = React.useState(false)
+
+  if (group === null || !isGroupLeader(group, node.key)) return null
+
+  const toggle = React.useCallback(() => setExpanded((value) => !value), [])
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      setExpanded((value) => !value)
+    }
+  }
+  const runningName = isRunningBlock(group.running) ? group.running.name : null
 
   return React.createElement(
     'div',
     { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': runningName !== null ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
-    bar,
-    expanded ? items : null,
+    React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
+    expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
   )
 })

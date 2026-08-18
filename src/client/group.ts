@@ -149,15 +149,18 @@ function continuesRun(node: ChatNodeLike, anchor: ChatNodeLike): boolean {
 
 /**
  * Compute the group containing the node with `nodeKey`, or null when the node
- * is absent / not part of a tool run. The result is a pure function of the
- * snapshot; callers memoize for render stability.
+ * is absent / not part of a foldable run. Works for BOTH tool-call seats and
+ * transparent assistant (think) seats: a run that contains at least one tool
+ * call is led by its first tool; a think-only run is led by its first
+ * transparent assistant. The result is a pure function of the snapshot;
+ * callers memoize for render stability.
  */
 export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup | null {
   const order = snapshot.order
   const idx = order.indexOf(nodeKey)
   if (idx < 0) return null
   const node = snapshot.nodes.get(nodeKey)
-  if (node === undefined || node.kind !== TOOL_KIND) return null
+  if (node === undefined || (node.kind !== TOOL_KIND && !isTransparentAssistant(node))) return null
   let start = idx
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1])
@@ -172,62 +175,35 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   }
   const keys = order.slice(start, end + 1)
   const items: GroupItem[] = []
-  let leaderKey: string | undefined
+  let firstToolKey: string | undefined
   for (const key of keys) {
     const member = snapshot.nodes.get(key)
     if (member === undefined) continue
     if (member.kind === TOOL_KIND) {
-      if (leaderKey === undefined) leaderKey = key
+      if (firstToolKey === undefined) firstToolKey = key
       items.push({ kind: 'tool', key, node: member })
     } else {
       items.push({ kind: 'think', key, node: member })
     }
   }
+  // Leader: the first TOOL when the run has tools (its seat owns the bar),
+  // otherwise the first transparent node (think-only group).
+  const leaderKey = firstToolKey ?? keys[0]
   if (leaderKey === undefined) return null
   let running: ToolBlockLike | undefined
-  let count = 0
   for (const item of items) {
     if (item.kind !== 'tool') continue
-    count += 1
     const block = item.node.data?.root
     if (running === undefined && isRunningBlock(block)) running = block
   }
-  return { leaderKey, itemKeys: keys, items, count, running }
+  // Count of FOLDED BLOCKS: tool rows + think rows (the bar reports
+  // "{count} 个块已被折叠").
+  return { leaderKey, itemKeys: keys, items, count: items.length, running }
 }
 
 /** Whether this seat is the group leader (the only one that renders). */
 export function isGroupLeader(group: ToolGroup, nodeKey: string): boolean {
   return group.leaderKey === nodeKey
-}
-
-/**
- * Whether a (transparent) assistant node is currently absorbed by a group —
- * its run contains at least one tool call. Used by the assistant wrapper to
- * decide between hiding (grouped) and official standalone rendering.
- */
-export function isAssistantGrouped(snapshot: GroupSnapshotLike, nodeKey: string): boolean {
-  const order = snapshot.order
-  const idx = order.indexOf(nodeKey)
-  if (idx < 0) return false
-  const node = snapshot.nodes.get(nodeKey)
-  if (node === undefined || !isTransparentAssistant(node)) return false
-  let start = idx
-  while (start > 0) {
-    const prev = snapshot.nodes.get(order[start - 1])
-    if (prev === undefined || !continuesRun(prev, node)) break
-    start -= 1
-  }
-  let end = idx
-  while (end < order.length - 1) {
-    const next = snapshot.nodes.get(order[end + 1])
-    if (next === undefined || !continuesRun(next, node)) break
-    end += 1
-  }
-  for (let i = start; i <= end; i += 1) {
-    const member = snapshot.nodes.get(order[i])
-    if (member !== undefined && member.kind === TOOL_KIND) return true
-  }
-  return false
 }
 
 /** Reference-stable equality for useSession's eq parameter. */

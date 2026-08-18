@@ -26,15 +26,15 @@
  */
 
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
-import { AssistantNodeWrapper, setSlotsService } from './AssistantNodeWrapper'
+import { AssistantNodeWrapper, setGroupT, setSlotsService } from './AssistantNodeWrapper'
 import { ToolCallGroupView } from './ToolCallGroupView'
 import { insertStyle } from './styles'
 import { installSlotCoreOverlay } from './slots-core-overlay'
 
 /** Locale dictionaries for this package's namespace. */
 const DICTS: Record<'zh' | 'en', Record<string, string>> = {
-  zh: { running: '正在运行', group: '工具调用组' },
-  en: { running: 'Running', group: 'tool call group' },
+  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' },
+  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded' },
 }
 
 export const name = 'tool-group'
@@ -42,6 +42,7 @@ export const inject = ['slots', 'locale']
 
 type LocaleFace = {
   register(ns: string, dicts: Record<string, Record<string, string>>): () => void
+  bind(ns: string): (key: string, params?: Record<string, unknown>) => string
 }
 
 type SlotsService = {
@@ -62,8 +63,10 @@ export function apply(ctx: {
   const restoreOverlay = installSlotCoreOverlay(SlotCore)
   ctx.effect(() => restoreOverlay, 'dsh-tool-group: slot-core overlay')
 
-  // 1b. The assistant wrapper reaches the official entry through the registry.
+  // 1b. The assistant wrapper reaches the official entry through the registry,
+  //     and binds its own tool-group translate for think-only folded bars.
   setSlotsService(slots)
+  setGroupT(locale.bind('tool-group'))
 
   // 2. Locale dictionaries.
   ctx.effect(() => locale.register('tool-group', DICTS), 'dsh-tool-group: dictionaries')

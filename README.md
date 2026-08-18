@@ -22,10 +22,12 @@ are reused for every expanded tool card.
 - **Grouping rule**: `tool-call` nodes that are consecutive in the chat flow
   (`snapshot.chat.order`) and belong to the same turn form one group.
   Assistant-step nodes whose blocks contain ONLY reasoning (Think rows) are
-  TRANSPARENT: they neither split chains nor count, but fold WITH the group
-  (hidden while collapsed, re-shown between the calls when expanded). Only
-  real assistant TEXT (and user/steering messages, commands, compaction, …)
-  ends a run — verified against a real 288-call session: with the old rule
+  TRANSPARENT: they neither split chains, but fold WITH the group (hidden
+  while collapsed, re-shown between the calls when expanded). Think rows
+  with NO adjacent tools fold into their OWN bar (think-only group). The
+  reasoning part of a text-bearing node is folded away too — **only text
+  stays visible**. Only real assistant TEXT (and user/steering messages,
+  commands, compaction, …) ends a run — verified against a real 288-call session: with the old rule
   every per-step Think row split the chain into 150 groups; with
   transparency the same stream folds into 85 groups split exclusively by
   text. (In the DSH data model every tool-producing step streams a reasoning
@@ -43,8 +45,10 @@ are reused for every expanded tool card.
   all keep their native look. New calls arriving while expanded are appended
   live; the user's expanded state never resets (it lives in React state of
   the group leader seat, keyed by the stable first-call node key).
-- **Count semantics**: top-level calls only; subcalls inside a block are not
-  counted.
+- **Bar label**: the folded bar reports `N 个块已被折叠` / `N blocks folded`
+  — N is the number of folded blocks (tool calls + Think rows folded into
+  the group; subcalls inside a block are not counted). While a call runs,
+  the left side shows `正在运行 <tool>` / `Running <tool>`.
 
 ## DSH version
 

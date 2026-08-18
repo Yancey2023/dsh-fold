@@ -12,7 +12,10 @@ import React from 'react'
 import { create, act } from 'react-test-renderer'
 import { ToolCallGroupView } from '../lib/client-component.mjs'
 
-const DICTS = { zh: { running: '正在运行', group: '工具调用组' }, en: { running: 'Running', group: 'tool call group' } }
+const DICTS = {
+  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' },
+  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded' },
+}
 
 function toolNode(key, turn, root) {
   return { key, kind: 'tool-call', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { root } }
@@ -32,7 +35,10 @@ function makeSession(order, nodes) {
 }
 
 function makeProps(snapshot, nodeKey, locale = 'zh') {
-  const t = (key) => DICTS[locale][key] ?? key
+  const t = (key, params) => {
+    const template = DICTS[locale][key] ?? key
+    return params ? template.replace(/\{(\w+)\}/g, (_m, n) => String(params[n] ?? '')) : template
+  }
   const renderSlot = (_key, owner, opts) => {
     // Mark the official dispatch: fallback only when no registered toolview.
     const marker = opts.entryKey === 'bash' ? `CARD:${opts.entryKey}:${owner.callId}` : null
@@ -73,7 +79,7 @@ function childrenOf(node) {
   const text = textOf(root.toJSON())
   assert.ok(text.includes('正在运行'), 'running label present')
   assert.ok(text.includes('bash'), 'running tool name present')
-  assert.ok(text.includes('1'), 'count 1 present')
+  assert.ok(text.includes('1 个块已被折叠'), 'folded label present')
   const json = root.toJSON()
   assert.equal(json.props['data-state'], 'running')
   root.unmount()
@@ -87,7 +93,7 @@ function childrenOf(node) {
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
   assert.ok(text.includes('正在运行') && text.includes('bash'), 'only the running tool shows')
-  assert.ok(text.includes('3'), 'count 3')
+  assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   root.unmount()
 }
 
@@ -100,7 +106,7 @@ function childrenOf(node) {
   const text = textOf(root.toJSON())
   assert.ok(!text.includes('正在运行'), 'no running label')
   assert.ok(!text.includes('read') && !text.includes('grep') && !text.includes('bash'), 'no tool names on the collapsed row')
-  assert.ok(text.includes('3'), 'count 3')
+  assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   root.unmount()
 }
 
@@ -158,7 +164,7 @@ function childrenOf(node) {
   const json = root.toJSON()
   assert.equal(json.children[0].props['aria-expanded'], true, 'stays expanded after streaming update')
   const text = textOf(json)
-  assert.ok(text.includes('3'), 'count grew to 3')
+  assert.ok(text.includes('3 个块已被折叠'), 'count grew to 3')
   assert.ok(text.includes('CARD:bash:c-bash'), 'new member rendered')
   root.unmount()
 }
@@ -171,7 +177,7 @@ function childrenOf(node) {
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
   assert.ok(!text.includes('正在运行'), 'error ended the chain')
-  assert.ok(text.includes('2'))
+  assert.ok(text.includes('2 个块已被折叠'))
   root.unmount()
 }
 
@@ -200,9 +206,9 @@ function childrenOf(node) {
     [assistantNode('a1', [think('first reasoning')]), toolNode('t1', 1, settled('read')), assistantNode('a2', [think('second reasoning')]), toolNode('t2', 1, running('bash'))],
   )
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
-  // Collapsed: ONE bar; count 2; running label bash; think text hidden.
+  // Collapsed: ONE bar; 4 folded blocks (2 tools + 2 think rows); think text hidden.
   let text = textOf(root.toJSON())
-  assert.ok(text.includes('2'), 'count 2 across reasoning')
+  assert.ok(text.includes('4 个块已被折叠'), 'folded blocks = tools + think rows')
   assert.ok(text.includes('正在运行') && text.includes('bash'), 'running label')
   assert.ok(!text.includes('first reasoning') && !text.includes('second reasoning'), 'think rows hidden while collapsed')
   // Expanded: think rows shown in flow order between the official cards.

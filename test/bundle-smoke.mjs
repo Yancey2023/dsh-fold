@@ -60,6 +60,13 @@ const fakeLocale = {
     localeRegistrations.push({ ns, dicts })
     return () => {}
   },
+  bind(ns) {
+    const dict = localeRegistrations.find((r) => r.ns === ns)?.dicts
+    return (key, params) => {
+      const template = (dict?.zh ?? {})[key] ?? key
+      return params ? template.replace(/\{(\w+)\}/g, (_m, n) => String(params[n] ?? '')) : template
+    }
+  },
 }
 const fakeDocument = {
   querySelector() {

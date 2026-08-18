@@ -4,27 +4,29 @@
  *
  * Two cases:
  *   - TRANSPARENT node (blocks contain only reasoning / tool-call
- *     placeholders / empty text) that is currently absorbed by a tool group:
- *     renders null — the group owns its Think rows (shown in-group when the
- *     chain is expanded, hidden while collapsed). This is what makes
- *     consecutive tool calls merge across reasoning instead of splitting
- *     into per-call bars.
- *   - everything else (assistant TEXT, standalone think rows, interrupted
- *     steps): renders the OFFICIAL AssistantNodeView. Because the keyed slot
- *     dispatch can only reach the cell winner, the official component is
- *     obtained from the live slot registry (`slots.entries(...)`, the public
- *     read of all registrations) and mounted with this seat's own composed
- *     kit — the same props the renderer would have passed to it unshadowed
- *     (node, useTurnData bound to this node's key, openFile, loadImage,
- *     fileMentions, t in the conversation namespace).
+ *     placeholders / empty text): ALWAYS folded. If its run contains tool
+ *     calls it joins that group (renders null; the tool leader owns the bar).
+ *     If the run is think-only, the FIRST transparent node leads its own
+ *     folded bar ("N 个块已被折叠") that expands into the Think rows.
+ *   - everything else (assistant TEXT, interrupted steps): renders the
+ *     OFFICIAL AssistantNodeView. Because the keyed slot dispatch can only
+ *     reach the cell winner, the official component is obtained from the
+ *     live slot registry (`slots.entries(...)`, the public read of all
+ *     registrations) and mounted with this seat's own composed kit — the
+ *     same props the renderer would have passed to it unshadowed (node,
+ *     useTurnData bound to this node's key, openFile, loadImage,
+ *     fileMentions, t in the conversation namespace). React.memo components
+ *     are objects, not functions — never shape-check the component.
  *
  * The registry lookup degrades fail-soft: if the official entry is ever
- * missing, the wrapper renders nothing rather than breaking the flow.
+ * missing, text nodes render nothing rather than breaking the flow.
  */
 
 import * as React from 'react'
-import { eqGrouped, isAssistantGrouped, isTransparentAssistant } from './group'
+import { eqGroup, groupOf, isGroupLeader, isTransparentAssistant } from './group'
+import type { AssistantBlockLike } from './group'
 import type { ChatNodeLike } from './group'
+import { GroupBar, GroupItems } from './ToolCallGroupView'
 
 export interface AssistantNodeWrapperProps {
   /** The assistant-step node owned by this seat. */
@@ -42,8 +44,15 @@ let slotsService:
     }
   | undefined
 
+/** tool-group namespace translate for folded bars (set by the plugin entry). */
+let groupT: ((key: string, params?: Record<string, unknown>) => string) | undefined
+
 export function setSlotsService(service: typeof slotsService): void {
   slotsService = service
+}
+
+export function setGroupT(t: typeof groupT): void {
+  groupT = t
 }
 
 /** The product's AssistantNodeView entry (priority 0), when registered. */
@@ -58,18 +67,38 @@ function officialAssistantEntry():
 
 export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(props: AssistantNodeWrapperProps): React.ReactElement | null {
   const { node, useSession } = props
-  const probe = useSession(
-    (snapshot) => (isTransparentAssistant(node) ? { grouped: isAssistantGrouped(snapshot.chat, node.key), node } : null),
-    eqGrouped,
+  const group = useSession((snapshot) => (isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null), eqGroup)
+  const [expanded, setExpanded] = React.useState(false)
+
+  if (group === null) {
+    // Text-bearing (or unknown) node: official rendering — with its
+    // reasoning blocks FOLDED AWAY ("除了text都要被折叠": only text stays
+    // visible; the Think part of a mixed node is hidden too).
+    const official = officialAssistantEntry()
+    // React.memo returns an OBJECT (not a function), so only reject absent
+    // entries — never shape-check the component.
+    if (official === undefined || official.component == null) return null
+    const data = node.data as { blocks?: readonly AssistantBlockLike[] } | undefined
+    const blocks = data?.blocks
+    const filtered = Array.isArray(blocks) ? blocks.filter((b) => b.kind !== 'reasoning') : blocks
+    const forwarded = filtered === blocks ? props : { ...props, node: { ...node, data: { ...data, blocks: filtered } } }
+    return React.createElement(official.component as React.ComponentType<Record<string, unknown>>, forwarded as Record<string, unknown>)
+  }
+
+  if (!isGroupLeader(group, node.key)) return null
+
+  const toggle = React.useCallback(() => setExpanded((value) => !value), [])
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      setExpanded((value) => !value)
+    }
+  }
+  const t = groupT ?? ((key: string, params?: Record<string, unknown>) => (params && 'count' in params ? String(params.count) : key))
+  return React.createElement(
+    'div',
+    null,
+    React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
+    expanded ? React.createElement(GroupItems, { group, t }) : null,
   )
-
-  if (probe !== null && probe.grouped) return null
-
-  const official = officialAssistantEntry()
-  // React.memo returns an OBJECT (not a function), so only reject absent
-  // entries — never shape-check the component.
-  if (official === undefined || official.component == null) return null
-  // Delegate with this seat's full composed kit (same props the renderer
-  // would pass to the official view when it wins the cell).
-  return React.createElement(official.component as React.ComponentType<Record<string, unknown>>, props as Record<string, unknown>)
 })
