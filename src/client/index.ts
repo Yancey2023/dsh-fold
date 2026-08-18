@@ -33,8 +33,8 @@ import { installSlotCoreOverlay } from './slots-core-overlay'
 
 /** Locale dictionaries for this package's namespace. */
 const DICTS: Record<'zh' | 'en', Record<string, string>> = {
-  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' },
-  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded' },
+  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠', turnFolded: '该轮次工作过程已折叠' },
+  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded', turnFolded: 'Turn work process folded' },
 }
 
 export const name = 'tool-group'

@@ -6,6 +6,24 @@
  */
 
 export const CSS = `
+.dshTurnFoldRow{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-width:0;height:24px;box-sizing:border-box;padding:0 8px;border-radius:6px;
+  cursor:pointer;user-select:none;outline:none;
+  font-size:14px;line-height:24px;
+  border:1px dashed var(--dsw-alias-border-l2);
+}
+.dshTurnFoldRow:hover,
+.dshTurnFoldRow:focus-visible{
+  background:var(--dsw-alias-interactive-bg-hover);
+  border-color:var(--dsw-alias-border-l3);
+}
+.dshTurnFoldLabel{
+  min-width:0;color:var(--dsw-alias-label-secondary);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:14px;line-height:24px;
+}
+[data-chat-flow-key]:has([data-tool-group-hidden]){display:none}
 .dshToolGroupRow{
   display:flex;align-items:center;gap:12px;min-width:0;height:24px;
   box-sizing:border-box;padding:0 8px;border-radius:6px;

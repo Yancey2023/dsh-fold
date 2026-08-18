@@ -13,8 +13,8 @@ import { create, act } from 'react-test-renderer'
 import { ToolCallGroupView } from '../lib/client-component.mjs'
 
 const DICTS = {
-  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' },
-  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded' },
+  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠', turnFolded: '该轮次工作过程已折叠' },
+  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded', turnFolded: 'Turn work process folded' },
 }
 
 function toolNode(key, turn, root) {
@@ -27,10 +27,11 @@ function settled(name) {
   return { kind: 'tool-result', callId: `c-${name}`, call: { name, argsRaw: '{}' }, content: [{ type: 'text', text: 'ok' }], isError: false, subCalls: [] }
 }
 
-function makeSession(order, nodes) {
+function makeSession(order, nodes, turnEnds) {
   const map = new Map(nodes.map((n) => [n.key, n]))
   return {
     chat: { order, nodes: { get: (k) => map.get(k) } },
+    ...(turnEnds ? { turnEnds } : {}),
   }
 }
 
@@ -118,7 +119,7 @@ function childrenOf(node) {
   const leader = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   assert.ok(leader.toJSON() !== null, 'leader renders')
   const follower = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't2')))
-  assert.equal(follower.toJSON(), null, 'non-leader renders null')
+  assert.ok(follower.toJSON() !== null && follower.toJSON().props['data-tool-group-hidden'] !== undefined, 'non-leader renders a hidden marker (no gap)')
   leader.unmount()
   follower.unmount()
 }
@@ -221,6 +222,50 @@ function childrenOf(node) {
   assert.ok(text.indexOf('first reasoning') < text.indexOf('FALLBACK:read'), 'think1 before tool1')
   assert.ok(text.indexOf('FALLBACK:read') < text.indexOf('second reasoning'), 'tool1 before think2')
   root.unmount()
+}
+
+// ---------------------------------------------------------------------------
+// BIG FOLD: a closed, summarized turn folds its process behind one bar.
+// The tool leader is also the first process node -> renders the big bar;
+// expanding reveals the small group bar.
+// ---------------------------------------------------------------------------
+{
+  function textAssistant(key, text) {
+    return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: { blocks: [{ kind: 'text', text }], status: 'settled' } }
+  }
+  const turnEnds = new Map([[1, 999]])
+  const snapshot = makeSession(
+    ['t1', 't2', 't3', 'aSum'],
+    [toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('grep')), toolNode('t3', 1, settled('bash')), textAssistant('aSum', '最终总结')],
+    turnEnds,
+  )
+  // act-wrapped create: the external-store subscription commits inside act.
+  let root
+  act(() => {
+    root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
+  })
+  // Collapsed: only the big fold bar; the small bar is hidden inside.
+  let text = textOf(root.toJSON())
+  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar shown')
+  assert.ok(!text.includes('3 个块已被折叠'), 'small bar hidden inside the big fold')
+  assert.ok(!text.includes('read'), 'no tool content visible')
+  // Expand the big fold -> the small fold appears (fragment flattens: the
+  // bar is the top-level element).
+  act(() => {
+    root.toJSON().props.onClick()
+  })
+  text = textOf(root.toJSON())
+  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar stays (chevron down)')
+  assert.ok(text.includes('3 个块已被折叠'), 'small fold revealed inside the big fold')
+  root.unmount()
+
+  // A non-first process member seat renders null while the big fold is collapsed.
+  let memberRoot
+  act(() => {
+    memberRoot = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't2')))
+  })
+  assert.ok(memberRoot.toJSON().props['data-tool-group-hidden'] !== undefined, 'process member hidden behind the big fold (no gap)')
+  memberRoot.unmount()
 }
 
 console.log('component.test: all assertions passed')

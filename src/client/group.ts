@@ -101,7 +101,7 @@ export interface ToolGroup {
 const TOOL_KIND = 'tool-call'
 const ASSISTANT_KIND = 'assistant-step'
 
-function turnOf(node: ChatNodeLike): number | undefined {
+export function turnOf(node: ChatNodeLike): number | undefined {
   const loc = node.location
   if (loc === undefined) return undefined
   if (loc.kind === 'turn' || loc.kind === 'step') return loc.turn?.turn

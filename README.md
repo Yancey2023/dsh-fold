@@ -45,6 +45,14 @@ are reused for every expanded tool card.
   all keep their native look. New calls arriving while expanded are appended
   live; the user's expanded state never resets (it lives in React state of
   the group leader seat, keyed by the stable first-call node key).
+- **Turn-level big fold**: when a turn (one user message + the agent's whole
+  working cycle) CLOSES with a final summary, everything except the summary —
+  tool calls, Think rows AND intermediate assistant text — folds behind ONE
+  bar reading `该轮次工作过程已折叠` / `Turn work process folded`. The small
+  folds live INSIDE the big fold: expanding the big fold reveals them at
+  their original positions; the summary text always stays visible. A turn
+  that is still open, or that ended without a summary, keeps the current
+  (small-fold only) view.
 - **Bar label**: the folded bar reports `N 个块已被折叠` / `N blocks folded`
   — N is the number of folded blocks (tool calls + Think rows folded into
   the group; subcalls inside a block are not counted). While a call runs,

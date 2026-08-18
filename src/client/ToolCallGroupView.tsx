@@ -32,6 +32,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
+import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
 type RenderSlot = (
@@ -65,6 +66,8 @@ export interface ToolCallGroupViewProps {
   inspectCall: (callId: string) => void
   /** Namespace-bound translate (`locale: 'tool-group'`). */
   t: (key: string, params?: Record<string, unknown>) => string
+  /** Session id (big-fold state is keyed per session). */
+  sessionId?: string
 }
 
 /** Minimal fallback for tool names without a registered `tool.call.toolview` entry. */
@@ -243,6 +246,34 @@ function ThinkItem({ item, t }: { item: GroupItem & { kind: 'think' }; t: ToolCa
   )
 }
 
+export interface TurnFoldBarProps {
+  expanded: boolean
+  onToggle: () => void
+  onKeyDown: (event: React.KeyboardEvent) => void
+  t: (key: string, params?: Record<string, unknown>) => string
+}
+
+/** The turn-level ("big") fold bar: "该轮次工作过程已折叠" + chevron. */
+export const TurnFoldBar = React.memo(function TurnFoldBar({ expanded, onToggle, onKeyDown, t }: TurnFoldBarProps): React.ReactElement {
+  const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
+    className: 'dshToolGroupChevron',
+  })
+  return React.createElement(
+    'div',
+    {
+      className: 'dshTurnFoldRow',
+      role: 'button',
+      tabIndex: 0,
+      'aria-expanded': expanded,
+      'aria-label': t('turnFolded'),
+      onClick: onToggle,
+      onKeyDown,
+    },
+    React.createElement('span', { className: 'dshTurnFoldLabel' }, t('turnFolded')),
+    chevron,
+  )
+})
+
 export interface GroupBarProps {
   group: ToolGroup
   expanded: boolean
@@ -320,27 +351,69 @@ export const GroupItems = React.memo(function GroupItems(props: GroupItemsProps)
   )
 })
 
+/** Renders nothing but marks the seat as folded so its flowItem is hidden
+ * (no 16px column gap for hidden members). */
+function FoldedSeat(): React.ReactElement {
+  return React.createElement('div', { 'data-tool-group-hidden': '' })
+}
+
 /** The tool-call seat: only the group's first TOOL leader renders (bar + items). */
 export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: ToolCallGroupViewProps): React.ReactElement | null {
-  const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t } = props
+  const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t, sessionId } = props
+  // ALL hooks unconditional (React rules; a path-dependent hook order
+  // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
+  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
   const [expanded, setExpanded] = React.useState(false)
-
-  if (group === null || !isGroupLeader(group, node.key)) return null
-
+  const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
-  const onKeyDown = (event: React.KeyboardEvent) => {
+  const onKeyDown = React.useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       setExpanded((value) => !value)
     }
+  }, [])
+  const turnKey = turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`
+  const turnToggle = React.useCallback(() => {
+    if (turnKey === undefined) return
+    setTurnExpanded(turnKey, !turnExpanded)
+  }, [turnKey, turnExpanded])
+  const turnKeyDown = React.useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        turnToggle()
+      }
+    },
+    [turnToggle],
+  )
+
+  if (group === null || !isGroupLeader(group, node.key)) {
+    // Non-leader / non-group seat: folded to nothing (mark so the flowItem
+    // is hidden instead of leaving a gap).
+    return React.createElement(FoldedSeat, null)
   }
+
   const runningName = isRunningBlock(group.running) ? group.running.name : null
 
-  return React.createElement(
+  const small = React.createElement(
     'div',
     { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': runningName !== null ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
     React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
     expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
   )
+
+  if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+    const first = node.key === turnInfo.firstKey
+    if (!turnExpanded) {
+      return first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
+    }
+    return React.createElement(
+      React.Fragment,
+      null,
+      first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+      turnExpanded ? small : null,
+    )
+  }
+  return small
 })

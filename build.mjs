@@ -86,6 +86,18 @@ await build({
   logLevel: 'info',
 })
 
+// ESM mirror of the turn-fold logic, for node-based unit tests.
+await build({
+  entryPoints: ['src/client/turn-fold.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node18',
+  outfile: 'lib/client-turn-fold.mjs',
+  external: ['react', 'react/jsx-runtime'],
+  logLevel: 'info',
+})
+
 // ESM mirror of the assistant wrapper (icons stubbed), for render tests.
 await build({
   entryPoints: ['src/client/AssistantNodeWrapper.tsx'],
@@ -99,4 +111,4 @@ await build({
   logLevel: 'info',
 })
 
-console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-component.mjs, lib/client-assistant.mjs')
+console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-component.mjs, lib/client-assistant.mjs, lib/client-turn-fold.mjs')

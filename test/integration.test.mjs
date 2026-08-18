@@ -192,7 +192,7 @@ const render = renderer(core, session, dicts)
     },
   }
   const r1 = create(renderer(core, groupedSession, dicts)('conversation.chat.node', assistantEntry, { node: groupedSession.chat.nodes.get('a1') }))
-  assert.equal(r1.toJSON(), null, 'grouped transparent assistant hidden')
+  assert.ok(r1.toJSON() !== null && r1.toJSON().props['data-tool-group-hidden'] !== undefined, 'grouped transparent assistant hidden (no gap)')
   r1.unmount()
 
   // text-bearing -> official (delegation through the registry)
