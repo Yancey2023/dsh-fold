@@ -223,6 +223,9 @@ function childrenOf(node) {
   assert.ok(text.includes('FALLBACK:read') && text.includes('CARD:bash:c-bash'), 'official tool cards shown')
   assert.ok(text.indexOf('first reasoning') < text.indexOf('FALLBACK:read'), 'think1 before tool1')
   assert.ok(text.indexOf('FALLBACK:read') < text.indexOf('second reasoning'), 'tool1 before think2')
+  // Requested: the live block shows ONLY while collapsed — expanded, the
+  // bar's left side is empty (the details are right below).
+  assert.ok(!text.includes('echo hi'), 'live block hidden once the group is expanded')
   root.unmount()
 }
 

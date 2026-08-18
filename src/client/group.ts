@@ -151,6 +151,29 @@ export function isRunningBlock(block: ToolBlockLike | undefined): block is Runni
   return block !== undefined && !('kind' in block)
 }
 
+/**
+ * The conversation's LATEST active node — the newest thing currently
+ * "working" anywhere in the flow: a still-running tool call, or a still-
+ * streaming Think row (assistant node in `running` state). Scan from the end
+ * of the order so the newest activity wins: while a call executes the call is
+ * the latest work; once it settles and the model reasons again, the Think
+ * row becomes the latest. undefined when nothing is active — the folded
+ * bar's left side stays empty (the conversation is idle).
+ */
+export function latestActiveNode(snapshot: GroupSnapshotLike): ChatNodeLike | undefined {
+  const order = snapshot.order
+  for (let i = order.length - 1; i >= 0; i -= 1) {
+    const node = snapshot.nodes.get(order[i])
+    if (node === undefined) continue
+    if (node.kind === TOOL_KIND) {
+      if (isRunningBlock(node.data?.root)) return node
+      continue
+    }
+    if (isTransparentAssistant(node) && node.data?.status === 'running') return node
+  }
+  return undefined
+}
+
 /** Wire tool name from either lifecycle form. */
 export function callName(block: ToolBlockLike): string {
   return 'kind' in block ? block.call?.name ?? '' : block.name

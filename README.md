@@ -59,16 +59,19 @@ official primitives).
   — N is the number of folded blocks (tool calls + Think rows folded into
   the group; subcalls inside a block are not counted). While a call runs,
   the left side shows `正在运行 <tool>` / `Running <tool>`.
-- **Live block in the bar**: while a folded block is working or streaming,
-  the collapsed row shows THE BLOCK ITSELF — the product's own collapsed
-  row replica — instead of a bare `正在运行 <tool>` label: a streaming
-  Think row renders `[Think] · <latest line>`, a working tool call renders
-  its real row (`[icon] Bash · <command description>` for a terminal call,
-  `Read · <path>`, `Search · <query>`, `ask_user_question · <question>`, …
-  — the product's `toolRowModel` replicated verbatim). Tools take priority
-  over the still-running think row that precedes them; when the call
-  settles the bar switches to the next working item, and to nothing once
-  every block settled. The running state also adds the product's row sweep.
+- **Live block in the bar = the conversation's latest state**: the folded
+  bar's left side shows what the CURRENT conversation is doing RIGHT NOW —
+  the newest active block anywhere in the flow, not a per-group label: a
+  streaming Think row renders `[Think] · <latest line>`, a working tool call
+  renders its real row (`[icon] Bash · <command description>` for a terminal
+  call, `Read · <path>`, `Search · <query>`, `ask_user_question ·
+  <question>`, … — the product's `toolRowModel` replicated verbatim). While
+  a call executes the working call is the latest; once it settles and the
+  model reasons again, the Think row takes over; when the conversation is
+  idle the left side is empty. The live block shows ONLY while the group is
+  COLLAPSED — expanded, the details are right below, so the bar's left goes
+  empty. The bar whose own group hosts the active node additionally shows
+  the product's row sweep.
 - **Non-text notice blocks fold too**: automatic context compression
   (`compaction`), context injection (`context`), manual compaction
   (`manual-compaction`) and user commands such as `/permission`
@@ -97,12 +100,16 @@ official primitives).
 - **Auto-load older at the top**: scrolling the conversation to the very
   top while older history exists automatically pulls the next page
   (`loadOlder`) — no button click needed; the product's 加载更早 button
-  remains as a manual fallback. The scroll host is resolved through the
-  product's own `scrollerOf` contract (`[data-conversation-scroll]`), the
-  action is the session scope's official `conversation.loadOlder()`, and
-  guards (near-top threshold, `hasMore`, `loadingOlder`, in-flight) prevent
-  duplicate or mid-scroll loads. This is the one behavioral DOM read in the
-  plugin (a passive scroll listener); nothing is patched or restyled.
+  remains as a manual fallback. While the user KEEPS resting at the top and
+  `hasMore` stays true, pages continue loading one after another until the
+  history is exhausted or the user scrolls away (each completed load re-arms
+  the pump with the refreshed snapshot). The scroll host is resolved through
+  the product's own `scrollerOf` contract
+  (`[data-conversation-scroll]`), the action is the session scope's official
+  `conversation.loadOlder()`, and guards (near-top threshold, `hasMore`,
+  `loadingOlder`, in-flight pump) prevent duplicate or mid-scroll loads.
+  This is the one behavioral DOM read in the plugin (a passive scroll
+  listener); nothing is patched or restyled.
 
 ## DSH version
 

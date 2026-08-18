@@ -20,6 +20,7 @@
 
 import * as React from 'react'
 import type { ChatNodeLike } from './group'
+import { latestActiveNode } from './group'
 import { GroupBar, TurnFoldBar } from './ToolCallGroupView'
 import type { ToolGroup } from './group'
 import { AutoLoadHost } from './AutoLoadHost'
@@ -72,6 +73,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
+  const live = useSession((snapshot) => latestActiveNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
@@ -113,7 +115,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
       output = React.createElement(FoldedSeat, null)
     } else {
       const group = singleGroup(node)
-      const bar = React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t })
+      const bar = React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live })
       const notice = React.createElement(
         'div',
         { className: 'dshToolGroup', 'data-tool-group': '', 'data-notice': '' } as unknown as React.HTMLAttributes<HTMLDivElement>,

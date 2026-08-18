@@ -32,7 +32,7 @@ import {
   IconQuestionOutline14,
   IconThinkOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock } from './group'
+import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock, isTransparentAssistant, latestActiveNode } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
 import { runningToolRow } from './tool-row'
 import { AutoLoadHost } from './AutoLoadHost'
@@ -294,30 +294,41 @@ export interface GroupBarProps {
   t: (key: string, params?: Record<string, unknown>) => string
   /** Session workspace root (only the tool-call seat provides it). */
   cwd?: string
+  /**
+   * The conversation's LATEST active node (running tool or streaming Think),
+   * shown on the bar's left ONLY while collapsed — it reflects what the
+   * current conversation is doing right now. undefined while idle.
+   */
+  live?: ChatNodeLike | undefined
 }
 
 /**
  * The live content of the folded bar: the product's collapsed row for the
- * running item — a streaming Think row (`[icon] Think · <latest line>`) or a
- * working tool call (`[icon] <Title> · <summary>`), exactly as the product's
- * own ReasoningRow / ToolRow would render it collapsed. The visually hidden
- * running label keeps AT parity with the product rows.
+ * conversation's latest active node — a streaming Think row
+ * (`[icon] Think · <latest line>`) or a working tool call
+ * (`[icon] <Title> · <summary>`), exactly as the product's own ReasoningRow /
+ * ToolRow would render it collapsed. The visually hidden running label keeps
+ * AT parity with the product rows.
  */
-const LiveRow = React.memo(function LiveRow({ item, cwd, t }: { item: GroupItem; cwd?: string; t: GroupBarProps['t'] }): React.ReactElement {
+const LiveRow = React.memo(function LiveRow({ node, cwd, t }: { node: ChatNodeLike; cwd?: string; t: GroupBarProps['t'] }): React.ReactElement {
   let icon: React.ReactElement
   let title: string
   let summary: string
-  if (item.kind === 'think') {
-    const blocks = item.node.data?.blocks ?? []
+  // Boolean wrapper: `isTransparentAssistant` is a type guard, and a guard in
+  // a negative position narrows the else branch to `never` — annotate the
+  // alias as plain boolean so `node` keeps its type in both branches.
+  const think: boolean = isTransparentAssistant(node)
+  if (think) {
+    const blocks = node.data?.blocks ?? []
     const reasoning = blocks.filter((block) => block.kind === 'reasoning' && (block.text ?? '').trim() !== '')
     const text = reasoning.length > 0 ? reasoning[reasoning.length - 1].text ?? '' : ''
     icon = React.createElement(IconThinkOutline14, { size: 14 })
     title = 'Think'
     summary = latestLine(text)
   } else {
-    const block = item.node.data?.root
+    const block = node.data?.root
     const name = block === undefined ? '' : callName(block)
-    const row = runningToolRow(name, block ?? ({ callId: item.key, name } as ToolBlockLike), cwd)
+    const row = runningToolRow(name, block ?? ({ callId: node.key, name } as ToolBlockLike), cwd)
     icon = React.createElement(name === 'ask_user_question' ? IconQuestionOutline14 : IconApiOutline14, { size: 14 })
     title = row.title
     summary = row.summary
@@ -333,10 +344,16 @@ const LiveRow = React.memo(function LiveRow({ item, cwd, t }: { item: GroupItem;
   )
 })
 
-/** The one-line folded bar: [live running block?] [N 个块已被折叠] [chevron]. */
-export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle, onKeyDown, t, cwd }: GroupBarProps): React.ReactElement {
-  const runningItem = group.runningItem
-  const live = runningItem === undefined ? null : React.createElement(LiveRow, { item: runningItem, cwd, t })
+/** The one-line folded bar: [live block? (collapsed only)] [N 个块已被折叠] [chevron]. */
+export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle, onKeyDown, t, cwd, live }: GroupBarProps): React.ReactElement {
+  // Requested: the live block shows ONLY while the group is collapsed; when
+  // expanded the details are right below, so the bar's left side goes empty.
+  const liveShown = live !== undefined && !expanded
+  const liveNode = liveShown ? React.createElement(LiveRow, { node: live, cwd, t }) : null
+  // The sweep marks the bar whose OWN group hosts the active node (other bars
+  // show the same status statically); it also stops when expanded.
+  const ownsLive = live !== undefined && group.itemKeys.includes(live.key)
+  const running = !expanded && ownsLive
   const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
     className: 'dshToolGroupChevron',
   })
@@ -350,9 +367,9 @@ export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle
       'aria-label': t('folded', { count: group.count }),
       onClick: onToggle,
       onKeyDown,
-      'data-state': runningItem === undefined ? 'settled' : 'running',
+      'data-state': running ? 'running' : 'settled',
     },
-    React.createElement('div', { className: 'dshToolGroupLeft' }, live),
+    React.createElement('div', { className: 'dshToolGroupLeft' }, liveNode),
     React.createElement(
       'div',
       { className: 'dshToolGroupRight' },
@@ -411,6 +428,7 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
+  const live = useSession((snapshot) => latestActiveNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
@@ -445,8 +463,8 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   } else {
     const small = React.createElement(
       'div',
-      { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': group.runningItem === undefined ? 'settled' : 'running' } as unknown as React.HTMLAttributes<HTMLDivElement>,
-      React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd }),
+      { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': live !== undefined && group.itemKeys.includes(live.key) && !expanded ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
+      React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
       expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
     )
 

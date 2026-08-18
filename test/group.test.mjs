@@ -4,7 +4,7 @@
  * transparency rule.
  */
 import assert from 'node:assert/strict'
-import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant } from '../lib/client-group.mjs'
+import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant, latestActiveNode } from '../lib/client-group.mjs'
 
 /** Build a snapshot node. */
 function toolNode(key, turn, root) {
@@ -291,6 +291,57 @@ function snapshot(order, nodes) {
   assert.ok(g, 'group exists')
   assert.equal(g.runningItem?.kind, 'think')
   assert.equal(g.running, undefined, 'no tool block running')
+}
+
+// ---------------------------------------------------------------------------
+// latestActiveNode: the conversation's NEWEST active node (running tool or
+// streaming Think) — the folded bar's live content reflects current state.
+// ---------------------------------------------------------------------------
+
+// Newest running tool wins over an earlier running tool.
+{
+  const s = snapshot(['t1', 't2'], [toolNode('t1', 1, running('read')), toolNode('t2', 1, running('bash'))])
+  const node = latestActiveNode(s)
+  assert.ok(node, 'an active node exists')
+  assert.equal(node.key, 't2', 'the LATEST running tool wins')
+}
+
+// A streaming Think row becomes the latest once the tool settled.
+{
+  const s = snapshot(
+    ['t1', 'a2'],
+    [toolNode('t1', 1, settled('read')), assistantNode('a2', 1, [think('reasoning again')], 'running')],
+  )
+  const node = latestActiveNode(s)
+  assert.equal(node?.key, 'a2', 'streaming think is the latest activity')
+}
+
+// While a tool executes, the running tool is the latest (not its preceding think).
+{
+  const s = snapshot(
+    ['a1', 't1'],
+    [assistantNode('a1', 1, [think('thinking then calling')], 'running'), toolNode('t1', 1, running('bash'))],
+  )
+  const node = latestActiveNode(s)
+  assert.equal(node?.key, 't1', 'the working call is the latest activity')
+}
+
+// Idle conversation: nothing active -> undefined (bar left side empty).
+{
+  const s = snapshot(
+    ['a1', 't1'],
+    [assistantNode('a1', 1, [think('done')]), toolNode('t1', 1, settled('read'))],
+  )
+  assert.equal(latestActiveNode(s), undefined, 'idle -> no live content')
+}
+
+// User/summary text between groups does not count as activity.
+{
+  const s = snapshot(
+    ['u1', 't1', 'aSum'],
+    [userNode('u1', 1), toolNode('t1', 1, settled('read')), assistantNode('aSum', 1, [textBlock('总结')])],
+  )
+  assert.equal(latestActiveNode(s), undefined)
 }
 
 console.log('group.test: all assertions passed')

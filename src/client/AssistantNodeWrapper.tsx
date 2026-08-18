@@ -23,7 +23,7 @@
  */
 
 import * as React from 'react'
-import { eqGroup, groupOf, isGroupLeader, isTransparentAssistant } from './group'
+import { eqGroup, groupOf, isGroupLeader, isTransparentAssistant, latestActiveNode } from './group'
 import type { AssistantBlockLike } from './group'
 import type { ChatNodeLike } from './group'
 import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
@@ -84,6 +84,7 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
   // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => (isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null), eqGroup)
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
+  const live = useSession((snapshot) => latestActiveNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
@@ -118,7 +119,7 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
       ? React.createElement(
           React.Fragment,
           null,
-          React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
+          React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live }),
           expanded ? React.createElement(GroupItems, { group, t }) : null,
         )
       : null
