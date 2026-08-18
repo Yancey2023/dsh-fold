@@ -320,4 +320,33 @@ function childrenOf(node) {
   memberRoot.unmount()
 }
 
+// ---------------------------------------------------------------------------
+// REGRESSION (user report): a merged run = compaction + think + tools + context
+// forms ONE group. The leader seat (first tool) renders exactly ONE merged
+// fold bar with the whole-run count — the notice members never get their own
+// bars, so opening the turn shows a single "5 个块已被折叠" bar, not five.
+// ---------------------------------------------------------------------------
+{
+  function noticeNode(key, kind) {
+    return { key, kind, location: { kind: 'turn', turn: { turn: 1 } }, data: {} }
+  }
+  function think() {
+    return { key: 'asm1', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: { blocks: [{ kind: 'reasoning', text: '想想' }], status: 'settled' } }
+  }
+  const snapshot = makeSession(
+    ['comp', 'asm1', 't1', 't2', 'ctx1'],
+    [noticeNode('comp', 'compaction'), think(), toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('grep')), noticeNode('ctx1', 'context')],
+  )
+  let root
+  act(() => {
+    root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
+  })
+  const text = textOf(root.toJSON())
+  assert.ok(text.includes('5 个块已被折叠'), 'the merged run folds into ONE bar with count 5 (compaction+think+read+grep+context)')
+  const barCount = (text.match(/个块已被折叠/g) ?? []).length
+  assert.equal(barCount, 1, 'exactly ONE merged fold bar at the leader seat')
+  assert.ok(!text.includes('该轮次工作过程已折叠'), 'open turn: no big fold bar')
+  root.unmount()
+}
+
 console.log('component.test: all assertions passed')

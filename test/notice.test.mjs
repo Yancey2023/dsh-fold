@@ -24,6 +24,9 @@ function settled(name) {
 function textAssistant(key, turn) {
   return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { blocks: [{ kind: 'text', text: '总结' }], status: 'settled' } }
 }
+function thinkAssistant(key, turn) {
+  return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { blocks: [{ kind: 'reasoning', text: '想想' }], status: 'settled' } }
+}
 function makeSession(order, nodes, turnEnds) {
   const map = new Map(nodes.map((n) => [n.key, n]))
   return { chat: { order, nodes: { get: (k) => map.get(k) } }, ...(turnEnds ? { turnEnds } : {}) }
@@ -163,6 +166,54 @@ setSlotsService({
   })
   assert.ok(member.toJSON().props['data-tool-group-hidden'] !== undefined, 'process member hidden (no gap)')
   member.unmount()
+}
+
+// ---------------------------------------------------------------------------
+// REGRESSION (user report): a merged run = compaction + think + tools + context
+// in ONE group. When the big fold is EXPANDED, the small group bar must render
+// ONLY at the group leader seat (the first tool). Notice process seats that
+// are NOT the leader (compaction seat = firstKey, context seat = member) must
+// NOT duplicate the "N 个块已被折叠" bar.
+// ---------------------------------------------------------------------------
+{
+  const snapshot = makeSession(
+    ['comp', 'asm1', 't1', 't2', 'ctx1', 'aSum'],
+    [
+      noticeNode('comp', 'compaction', 1),
+      thinkAssistant('asm1', 1),
+      toolNode('t1', 1, settled('read')),
+      toolNode('t2', 1, settled('grep')),
+      noticeNode('ctx1', 'context', 1),
+      textAssistant('aSum', 1),
+    ],
+    new Map([[1, 999]]),
+  )
+
+  // Compaction seat: firstKey (renders the big bar) but NOT the group leader
+  // (leader = first tool t1). Expanded big fold -> big bar WITHOUT any small
+  // "N 个块已被折叠" duplication.
+  setTurnExpanded(':1', true)
+  let comp
+  await act(async () => {
+    comp = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'comp')))
+  })
+  let text = textOf(comp.toJSON())
+  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar at the first process seat')
+  const compBars = findAll(comp.toJSON(), byClass('dshToolGroupRow'))
+  assert.equal(compBars.length, 0, 'no small fold bar at the compaction seat (it is not the group leader)')
+  comp.unmount()
+
+  // Context seat: process member, not the leader -> hidden marker, no bar.
+  let ctx
+  await act(async () => {
+    ctx = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'ctx1')))
+  })
+  const ctxJson = ctx.toJSON()
+  assert.ok(ctxJson.props['data-tool-group-hidden'] !== undefined, 'context member hidden (its bar belongs to the tool leader)')
+  assert.equal(findAll(ctxJson, byClass('dshToolGroupRow')).length, 0, 'no duplicated bar at the context member seat')
+  ctx.unmount()
+
+  setTurnExpanded(':1', false)
 }
 
 // ---------------------------------------------------------------------------

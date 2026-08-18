@@ -123,8 +123,13 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
       if (!turnExpanded) {
         output = first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
       } else {
-        // Big fold expanded: show the inline group small fold inside.
-        const groupSmall = buildGroupSmall()
+        // Big fold expanded: show the inline group's small fold at its OWN
+        // leader seat only. Every other process member stays hidden — the
+        // leader's bar already folds the whole run (tools + think rows +
+        // notices), so rendering it again here would duplicate the fold
+        // block once per compaction/context member.
+        const leaderSeat = inlineGroup !== null && isGroupLeader(inlineGroup, node.key)
+        const groupSmall = leaderSeat ? buildGroupSmall() : React.createElement(FoldedSeat, null)
         output = React.createElement(React.Fragment, null, first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null, groupSmall)
       }
     } else if (inlineGroup === null || !isGroupLeader(inlineGroup, node.key)) {
