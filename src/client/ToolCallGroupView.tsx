@@ -295,9 +295,11 @@ export interface GroupBarProps {
   /** Session workspace root (only the tool-call seat provides it). */
   cwd?: string
   /**
-   * The conversation's LATEST active node (running tool or streaming Think),
-   * shown on the bar's left ONLY while collapsed — it reflects what the
-   * current conversation is doing right now. undefined while idle.
+   * The conversation's LATEST active node (running tool or streaming Think);
+   * the bar shows it on its left ONLY when this bar's OWN group hosts that
+   * node, and only while collapsed — the other folded bars stay empty. The
+   * bar therefore reflects the current conversation's latest state at the
+   * one place that corresponds to it. undefined while idle.
    */
   live?: ChatNodeLike | undefined
 }
@@ -344,16 +346,16 @@ const LiveRow = React.memo(function LiveRow({ node, cwd, t }: { node: ChatNodeLi
   )
 })
 
-/** The one-line folded bar: [live block? (collapsed only)] [N 个块已被折叠] [chevron]. */
+/** The one-line folded bar: [live block? (only its own bar, collapsed)] [N 个块已被折叠] [chevron]. */
 export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle, onKeyDown, t, cwd, live }: GroupBarProps): React.ReactElement {
-  // Requested: the live block shows ONLY while the group is collapsed; when
-  // expanded the details are right below, so the bar's left side goes empty.
-  const liveShown = live !== undefined && !expanded
+  // Requested:
+  //  - the live block reflects the conversation's LATEST active node;
+  //  - it shows ONLY on the bar whose OWN group hosts that node (not on
+  //    every other folded bar — those keep an empty left side);
+  //  - it shows ONLY while the group is collapsed (expanded, the details are
+  //    right below, so the bar's left goes empty).
+  const liveShown = live !== undefined && !expanded && group.itemKeys.includes(live.key)
   const liveNode = liveShown ? React.createElement(LiveRow, { node: live, cwd, t }) : null
-  // The sweep marks the bar whose OWN group hosts the active node (other bars
-  // show the same status statically); it also stops when expanded.
-  const ownsLive = live !== undefined && group.itemKeys.includes(live.key)
-  const running = !expanded && ownsLive
   const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
     className: 'dshToolGroupChevron',
   })
@@ -367,7 +369,7 @@ export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle
       'aria-label': t('folded', { count: group.count }),
       onClick: onToggle,
       onKeyDown,
-      'data-state': running ? 'running' : 'settled',
+      'data-state': liveShown ? 'running' : 'settled',
     },
     React.createElement('div', { className: 'dshToolGroupLeft' }, liveNode),
     React.createElement(

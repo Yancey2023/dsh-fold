@@ -34,7 +34,17 @@ export { setGroupT } from './translate'
 export { setTurnExpanded } from './turn-fold'
 
 /** The notice cell kinds this wrapper owns. */
-export const NOTICE_KINDS = new Set(['compaction', 'context', 'manual-compaction', 'command'])
+export const NOTICE_KINDS = new Set([
+  'compaction',
+  'context',
+  'manual-compaction',
+  'command',
+  'model-retry',
+  'turn-error',
+  'turn-max-tokens',
+  'unknown',
+  'workflow-run',
+])
 
 export interface NoticeNodeWrapperProps {
   /** The node owned by this seat. */

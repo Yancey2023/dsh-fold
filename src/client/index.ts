@@ -134,13 +134,14 @@ export function apply(ctx: {
     'dsh-tool-group: user shadow',
   )
 
-  // 7. Shadow the non-text notice cells — automatic compaction, context
-  //    injection, manual compaction, user commands (/permission …):
-  //    everything except plain text folds. `command` re-declares the
-  //    commandview child slot (the overlay treats the identical spec as a
-  //    shared co-declaration), so the official CommandNodeView keeps its
-  //    keyed command cards when expanded.
-  for (const key of ['compaction', 'context', 'manual-compaction', 'command']) {
+  // 7. Shadow the non-text cells — automatic compaction, context injection,
+  //    manual compaction, user commands (/permission …), model-retry notices
+  //    (已重试模型请求), turn errors / max-token notices, unknown surfaces and
+  //    workflow runs: everything except plain text folds. `command`
+  //    re-declares the commandview child slot (the overlay treats the
+  //    identical spec as a shared co-declaration), so the official
+  //    CommandNodeView keeps its keyed command cards when expanded.
+  for (const key of ['compaction', 'context', 'manual-compaction', 'command', 'model-retry', 'turn-error', 'turn-max-tokens', 'unknown', 'workflow-run']) {
     ctx.effect(
       () =>
         slots.register(

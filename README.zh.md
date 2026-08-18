@@ -12,7 +12,7 @@
 - **轮次级大折叠**：一轮对话（一条用户消息 + 智能体整轮工作过程）在**结束并给出总结**后，除总结外的所有内容——工具调用、Think 行、中间正文——全部折进一个写着 `该轮次工作过程已折叠` 的大条。小折叠在大折叠**内部**：展开大折叠后小折叠在各自位置重现；总结正文始终可见。未结束的轮次或没有总结的轮次保持现状（仅小折叠）。
 - **折叠条文案**：折叠条显示 `N 个块已被折叠`——N 为折叠块数（工具调用 + 随组折叠的 Think 行；block 内部的 subcall 不重复计数）。运行中左侧显示 `正在运行 <工具>`。
 - **折叠条显示"当前对话最新状态"**：折叠条左侧显示当前对话**此时此刻正在做什么**——全局最新的活动块（不是组内标签）：流式 Think 行显示 `[Think] · <最新行>`；工作中的工具调用显示其真实行（terminal 调用为 `[icon] Bash · <命令描述>`，以及 `Read · <路径>`、`Search · <查询>`、`ask_user_question · <问题>`……即产品 `toolRowModel` 的逐字复刻）。调用执行中，正在跑的调用即"最新"；调用结束、模型再次思考时，Think 行接替显示；对话空闲时左侧留空。活动块**仅在折叠时**显示——展开后细节就在下方，折叠条左侧置空；真正承载该活动节点的折叠条额外带产品同款扫光动画。
-- **非文本块也折叠**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）和用户命令如 `/permission`（`command`）与其他工作块一样折叠——未结束轮次中各折成自己的 `1 个块已被折叠` 条；轮次以总结结束后并入轮次级大折叠。只有纯文本（用户/steering 消息、assistant 正文、总结）保持可见；错误/限额提示（turn-error、max-tokens、model-retry）刻意保持可见（诊断信息不能藏起来）。
+- **非文本块全部折叠**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）、用户命令如 `/permission`（`command`）、模型重试提示（`model-retry` ——"已重试模型请求"）、轮次错误（`turn-error`）、max-tokens 提示（`turn-max-tokens`）、未知面（`unknown`）与 workflow 运行（`workflow-run`）都与其他工作块一样折叠——未结束轮次中各折成自己的 `1 个块已被折叠` 条（可展开，诊断仍可一键到达）；轮次以总结结束后并入轮次级大折叠。只有纯文本（用户/steering 消息、assistant 正文、总结及其复制/操作行）保持可见。
 - **用户输入**：文本超过 3 行的用户消息被钳制到 3 行，气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。钳制发生在**无 padding 的内层盒**上（`max-height: 72px` = 恰好 3 × 24px 行高）：任何浏览器都精确渲染 3 行并保留气泡底部空隙——旧式 line-clamp 行为（会露出半行第 4 行并吃掉底部 padding）被 max-height 硬切掉（headless Chromium 实证）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（`MessageText`、`/name` `@name` ref chip、`JsonBlock` 附加块、官方 `ImageGallery`、产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）。短消息原样渲染（clamp 无效果、按钮隐藏）。
 - **滑到顶部自动加载更早（连续）**：滚动到对话最顶部且存在更早历史时自动拉取下一页（`loadOlder`），无需点击按钮；产品的"加载更早"按钮保留作手动兜底。只要用户**继续停在顶部**且 `hasMore` 仍为真，就会一页接一页自动加载，直到历史耗尽或用户滚离顶部（每次加载完成后用刷新后的快照重新武装）。滚动容器通过产品自身的 `scrollerOf` 契约（`[data-conversation-scroll]`）解析，动作走会话作用域的官方 `conversation.loadOlder()`；阈值、`hasMore`、`loadingOlder`、in-flight pump 等守卫防止重复或滚动中途误触发。这是插件唯一一处行为性 DOM 读取（被动 scroll 监听），不做任何修补或改样式。
 
@@ -111,7 +111,7 @@ pnpm test                    # 13 套：分组 · tool-row · 自动加载 · �
 - 展开态成员渲染复刻了产品内部未导出的 `ToolCall` 小外壳（call-row div + subcall 递归）；真正的卡片全部来自官方 `tool.call.toolview` 条目。没有注册 toolview 的工具使用一个紧凑的主题化兜底卡片（名称/参数/输出/错误），而非产品内部 `GenericToolCard`。
 - 用户气泡同样是复刻（基于官方 primitives）而非委托：Chromium 的 `-webkit-line-clamp` 无法穿透官方行内的嵌套 flex 布局（已用 headless Chromium 实证），钳制必须落在我们自己的元素上。复刻保留了产品气泡、ref chip、图片、时间与复制操作；若未来 DSH 修改用户气泡外观，复刻 CSS 需同步跟进。
 - 折叠条内的"真实块"是产品折叠行模型（`toolRowModel` + 运行中 Think 行）的复刻——标题/摘要与产品行一致，但由插件自行渲染；未来 DSH 若改动行模型的标题或摘要键，需同步 `tool-row.ts`。
-- 错误/限额诊断（turn-error、turn-max-tokens、model-retry）刻意**不**折叠——失败信息不能被藏起来。其余非文本块（compaction/context/命令）全部折叠。
+- 诊断块（model-retry、turn-error、turn-max-tokens、unknown、workflow-run）同样折叠——按"非文本全折叠"规则，各自折成可展开的 `1 个块已被折叠` 条，失败信息一键可达。
 - 组身份 = 首个成员的稳定节点 key。若加载更早历史导致新工具调用插到当前组长之前，组长会移交且该组展开状态重置。
 - SlotCore overlay 依赖本版本的两个结构不变量（register 把新条目推入父 record 的 entries；releaseEntry 拆除 `entry.children`）；若未来版本破坏它们，包装器 fail-closed（插件惰性，官方 UI 不受影响）。
 - 展开超长链条会重新挂载官方卡片；大量已结束调用默认保持折叠，滚动成本约等于一行。

@@ -89,7 +89,7 @@ function snapshot(order, nodes, turnEnds) {
 {
   const notice = (key, kind) => ({ key, kind, location: { kind: 'turn', turn: { turn: 1 } }, data: {} })
   const s = snapshot(
-    ['c1', 'u1', 'aTh', 't1', 'ctx1', 'cmd1', 'aSum'],
+    ['c1', 'u1', 'aTh', 't1', 'ctx1', 'cmd1', 'mr1', 'aSum'],
     [
       notice('c1', 'compaction'),
       notice('u1', 'user'),
@@ -97,6 +97,7 @@ function snapshot(order, nodes, turnEnds) {
       toolNode('t1', 1, settled('read')),
       notice('ctx1', 'context'),
       notice('cmd1', 'command'),
+      notice('mr1', 'model-retry'),
       assistantNode('aSum', 1, [textBlock('最终总结')]),
     ],
     new Map([[1, 999]]),
@@ -105,10 +106,15 @@ function snapshot(order, nodes, turnEnds) {
   assert.ok(info, 'closed summarized turn folds')
   assert.equal(info.summaryKey, 'aSum')
   assert.equal(info.firstKey, 'c1', 'compaction leads the fold when first')
-  assert.deepEqual([...info.keys], ['c1', 'aTh', 't1', 'ctx1', 'cmd1'], 'compaction/context/command are process nodes; user is not')
+  assert.deepEqual(
+    [...info.keys],
+    ['c1', 'aTh', 't1', 'ctx1', 'cmd1', 'mr1'],
+    'compaction/context/command/model-retry are process nodes; user is not',
+  )
   assert.equal(isProcessNode(info, 'u1'), false, 'user node stays visible')
   assert.equal(isProcessNode(info, 'ctx1'), true)
   assert.equal(isProcessNode(info, 'cmd1'), true)
+  assert.equal(isProcessNode(info, 'mr1'), true, 'model-retry (已重试模型请求) joins the fold')
 }
 
 // A closed turn with only a compaction notice (no assistant summary) does

@@ -116,12 +116,12 @@ registeredPlugin.apply({
 assert.equal(realSlots.SlotCore.prototype.register !== realRegister, true, 'overlay must replace register on the real SlotCore')
 assert.equal(realSlots.SlotCore.prototype.releaseEntry !== realRelease, true, 'overlay must replace releaseEntry on the real SlotCore')
 
-assert.equal(registrations.length, 7, 'seven shadows: tool-call + assistant-step + user + 4 notices')
+assert.equal(registrations.length, 12, 'twelve shadows: tool-call + assistant-step + user + 9 notice/diagnostic cells')
 const toolEntry = registrations.find((r) => r.options.key === 'tool-call')
 const assistantEntry = registrations.find((r) => r.options.key === 'assistant-step')
 const userEntry = registrations.find((r) => r.options.key === 'user')
 assert.ok(toolEntry && assistantEntry && userEntry, 'tool-call / assistant-step / user registered')
-const noticeKeys = ['compaction', 'context', 'manual-compaction', 'command']
+const noticeKeys = ['compaction', 'context', 'manual-compaction', 'command', 'model-retry', 'turn-error', 'turn-max-tokens', 'unknown', 'workflow-run']
 for (const key of noticeKeys) {
   assert.ok(registrations.some((r) => r.options.key === key), `${key} shadow registered`)
 }

@@ -72,15 +72,17 @@ official primitives).
   COLLAPSED — expanded, the details are right below, so the bar's left goes
   empty. The bar whose own group hosts the active node additionally shows
   the product's row sweep.
-- **Non-text notice blocks fold too**: automatic context compression
+- **Everything non-text folds**: automatic context compression
   (`compaction`), context injection (`context`), manual compaction
-  (`manual-compaction`) and user commands such as `/permission`
-  (`command`) are folded like any other work block — each behind its own
-  `1 个块已被折叠` bar in an open turn, and inside the turn-level big fold
-  once the turn closes with a summary. Only plain text (user/steering
-  messages, assistant text, summaries) stays visible; error/limit notices
-  (turn-error, max-tokens, model-retry) intentionally remain visible
-  diagnostics.
+  (`manual-compaction`), user commands such as `/permission` (`command`),
+  model-retry notices (`model-retry` — 已重试模型请求), turn errors
+  (`turn-error`), max-token notices (`turn-max-tokens`), unknown surfaces
+  (`unknown`) and workflow runs (`workflow-run`) are folded like any other
+  work block — each behind its own `1 个块已被折叠` bar in an open turn
+  (expandable, so diagnostics stay reachable), and inside the turn-level
+  big fold once the turn closes with a summary. Only plain text (user and
+  steering messages, assistant text, summaries and the summary's copy/chrome
+  row) stays visible.
 - **User input**: a user message whose text overflows 3 lines is clamped to
   3 lines with a `展开` / `Expand` toggle below the bubble (shown only when
   the text really overflows, measured via ResizeObserver). The clamp lives
@@ -267,9 +269,9 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
   (`toolRowModel` + the running Think row) — same titles/summaries as the
   product rows, but re-rendered by the plugin; a future DSH changing the row
   model's titles or summary keys must be mirrored in `tool-row.ts`.
-- Error/limit diagnostics (turn-error, turn-max-tokens, model-retry) are
-  deliberately NOT folded — they stay visible so failures are never hidden.
-  Everything else non-text (compaction/context/commands) folds.
+- Diagnostics (model-retry, turn-error, turn-max-tokens, unknown,
+  workflow-run) fold too, per the all-non-text rule — each behind an
+  expandable `1 个块已被折叠` bar, so failures stay reachable in one click.
 - Group identity = first member's stable node key. If older history is
   loaded that prepends a tool call *before* the current leader, leadership
   moves to the new first node and that group's expanded state resets.

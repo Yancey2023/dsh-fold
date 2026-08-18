@@ -114,6 +114,28 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
+// Requested: the live block shows ONLY on the bar whose OWN group hosts the
+// latest active node. Two groups in one open turn — the active bash lives in
+// the SECOND group — the FIRST group's bar keeps an empty left side.
+// ---------------------------------------------------------------------------
+{
+  const snapshot = makeSession(
+    ['t1', 'txt', 't2'],
+    [toolNode('t1', 1, settled('read')), { key: 'txt', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 2 } }, data: { blocks: [{ kind: 'text', text: '正文分隔' }], status: 'settled' } }, toolNode('t2', 1, running('bash'))],
+  )
+  const group1 = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
+  const t1 = textOf(group1.toJSON())
+  assert.ok(t1.includes('1 个块已被折叠'), 'first group bar present')
+  assert.ok(!t1.includes('echo hi') && !t1.includes('Bash'), 'first group shows NO live block (not its node)')
+  group1.unmount()
+  const group2 = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't2')))
+  const t2 = textOf(group2.toJSON())
+  assert.ok(t2.includes('Bash') && t2.includes('echo hi'), 'the owning group shows the live block')
+  assert.equal(group2.toJSON().props['data-state'], 'running')
+  group2.unmount()
+}
+
+// ---------------------------------------------------------------------------
 // Leader rule: non-leader seat renders nothing; group bar only once.
 // ---------------------------------------------------------------------------
 {

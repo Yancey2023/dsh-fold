@@ -44,10 +44,24 @@ function isThinkOnly(node: ChatNodeLike): boolean {
  * Node kinds that belong to the turn's work process and fold with the big
  * fold: tool calls, assistant steps (Think rows / intermediate text) and the
  * non-text notice rows (automatic compaction, context injection, manual
- * compaction, user commands such as /permission). Everything else — user
- * messages, steering, summary text, error notices — stays visible.
+ * compaction, user commands such as /permission), and the diagnostics —
+ * model-retry notices (已重试模型请求), turn errors and max-token notices,
+ * unknown surfaces, workflow runs. Everything else — user messages,
+ * steering, summary text, the summary's actions chrome — stays visible.
  */
-export const FOLDABLE_KINDS = new Set(['tool-call', 'assistant-step', 'compaction', 'context', 'manual-compaction', 'command'])
+export const FOLDABLE_KINDS = new Set([
+  'tool-call',
+  'assistant-step',
+  'compaction',
+  'context',
+  'manual-compaction',
+  'command',
+  'model-retry',
+  'turn-error',
+  'turn-max-tokens',
+  'unknown',
+  'workflow-run',
+])
 
 /**
  * Compute the big-fold context for the node with `nodeKey`, or null when the

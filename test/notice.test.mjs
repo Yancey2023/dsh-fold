@@ -75,6 +75,7 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
 const officialCompaction = React.memo(({ node }) => `OFFICIAL_COMPACTION[${node.key}]`)
 const officialContext = () => 'OFFICIAL_CONTEXT'
 const officialCommand = React.memo(({ node, renderSlot }) => `OFFICIAL_COMMAND[${node.key}]${renderSlot ? renderSlot('conversation.chat.commandview', { node }, { entryKey: 'permission' }) : '(no slot)'}`)
+const officialModelRetry = React.memo(({ node }) => `OFFICIAL_MODEL_RETRY[${node.key}]`)
 setSlotsService({
   entries(key) {
     assert.equal(key, 'conversation.chat.node')
@@ -82,6 +83,7 @@ setSlotsService({
       { options: { key: 'compaction', priority: 0 }, component: officialCompaction },
       { options: { key: 'context', priority: 0 }, component: officialContext },
       { options: { key: 'command', priority: 0 }, component: officialCommand },
+      { options: { key: 'model-retry', priority: 0 }, component: officialModelRetry },
     ]
   },
 })
@@ -152,6 +154,27 @@ setSlotsService({
   })
   assert.ok(member.toJSON().props['data-tool-group-hidden'] !== undefined, 'process member hidden (no gap)')
   member.unmount()
+}
+
+// ---------------------------------------------------------------------------
+// model-retry (已重试模型请求): an open-turn retry notice folds into its own
+// bar; expanding shows the official retry view.
+// ---------------------------------------------------------------------------
+{
+  const snapshot = makeSession(['mr1'], [noticeNode('mr1', 'model-retry', 1)])
+  let root
+  await act(async () => {
+    root = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'mr1')))
+  })
+  let json = root.toJSON()
+  const text = textOf(json)
+  assert.ok(text.includes('1 个块已被折叠'), 'model-retry notice folds')
+  assert.ok(!text.includes('OFFICIAL_MODEL_RETRY'), 'official view hidden while collapsed')
+  await act(async () => {
+    findAll(json, byClass('dshToolGroupRow'))[0].props.onClick()
+  })
+  assert.ok(textOf(root.toJSON()).includes('OFFICIAL_MODEL_RETRY[mr1]'), 'official retry view when expanded')
+  root.unmount()
 }
 
 // ---------------------------------------------------------------------------
