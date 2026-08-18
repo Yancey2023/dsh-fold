@@ -80,7 +80,10 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
 // kinds (the official components are tiny marker renderers).
 const officialCompaction = React.memo(({ node }) => `OFFICIAL_COMPACTION[${node.key}]`)
 const officialContext = () => 'OFFICIAL_CONTEXT'
-const officialCommand = React.memo(({ node, renderSlot }) => `OFFICIAL_COMMAND[${node.key}]${renderSlot ? renderSlot('conversation.chat.commandview', { node }, { entryKey: 'permission' }) : '(no slot)'}`)
+const officialCommand = React.memo(({ node, renderSlot }) => {
+  const out = renderSlot ? renderSlot('conversation.chat.commandview', { node }, { entryKey: 'permission', fallback: 'CMD_FALLBACK' }) : '(no slot)'
+  return `OFFICIAL_COMMAND[${node.key}]|${out}`
+})
 const officialModelRetry = React.memo(({ node }) => `OFFICIAL_MODEL_RETRY[${node.key}]`)
 setSlotsService({
   entries(key) {
@@ -140,7 +143,7 @@ setSlotsService({
   })
   text = textOf(first.toJSON())
   assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar stays')
-  assert.ok(text.includes('1 个块已被折叠'), 'small bar revealed inside the big fold')
+  assert.ok(text.includes('2 个块已被折叠'), 'small bar revealed inside the big fold (compaction + context merged into one group)' )
   assert.ok(!text.includes('OFFICIAL_COMPACTION'), 'small bar still collapsed')
 
   // Expand the small bar -> the official compaction view.
@@ -214,7 +217,7 @@ setSlotsService({
   })
   const text = textOf(root.toJSON())
   assert.ok(text.includes('OFFICIAL_COMMAND[cmd1]'), 'official command view delegated')
-  assert.ok(text.includes('CMDVIEW:conversation.chat.commandview:permission'), 'renderSlot reaches the commandview child slot')
+  assert.ok(text.includes('CMD_FALLBACK'), 'the in-group renderSlot yields the official command fallback (GenericCommandCard path)')
   root.unmount()
 }
 

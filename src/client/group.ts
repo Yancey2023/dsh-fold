@@ -88,12 +88,12 @@ export interface GroupSnapshotLike {
 }
 
 /** One folded item of a group: a top-level tool call, a transparent think
- * row, or a model-retry notice (已重试模型请求) folded in with the work it
- * interrupted. */
+ * row, or an inline notice (any non-text cell — model-retry, context
+ * injection, compaction, command, …) folded in with the adjacent work. */
 export type GroupItem =
   | { readonly kind: 'tool'; readonly key: string; readonly node: ChatNodeLike }
   | { readonly kind: 'think'; readonly key: string; readonly node: ChatNodeLike }
-  | { readonly kind: 'retry'; readonly key: string; readonly node: ChatNodeLike }
+  | { readonly kind: 'notice'; readonly cell: string; readonly key: string; readonly node: ChatNodeLike }
 
 export interface ToolGroup {
   /** Key of the first TOOL member; only that seat renders the group row. */
@@ -133,9 +133,25 @@ function sameTurn(left: ChatNodeLike, right: ChatNodeLike): boolean {
   return tl === turnOf(right)
 }
 
-/** A model-retry notice node. */
-export function isRetryNode(node: ChatNodeLike | undefined): boolean {
-  return node !== undefined && node.kind === 'model-retry'
+/** Every non-text cell that folds WITH the adjacent work instead of a
+ * separate bar (never splits a chain): model-retry, context injection,
+ * compaction, manual compaction, commands, turn errors / max-token notices,
+ * unknown surfaces, workflow runs. */
+export const INLINE_NOTICE_KINDS = new Set([
+  'model-retry',
+  'context',
+  'compaction',
+  'manual-compaction',
+  'command',
+  'turn-error',
+  'turn-max-tokens',
+  'unknown',
+  'workflow-run',
+])
+
+/** Whether the node is an inline notice kind. */
+export function isInlineNoticeNode(node: ChatNodeLike | undefined): boolean {
+  return node !== undefined && INLINE_NOTICE_KINDS.has(node.kind)
 }
 
 /**
@@ -195,11 +211,11 @@ export function callName(block: ToolBlockLike): string {
 }
 
 /** A node continues the current run (same turn): a tool call, a transparent
- * think row, or a model-retry notice (folded in with the work it
- * interrupted — it never splits a chain into separate bars). */
+ * think row, or any inline notice — folded in with the adjacent work, never
+ * splitting a chain into separate bars. */
 function continuesRun(node: ChatNodeLike, anchor: ChatNodeLike): boolean {
   if (!sameTurn(node, anchor)) return false
-  return node.kind === TOOL_KIND || isTransparentAssistant(node) || isRetryNode(node)
+  return node.kind === TOOL_KIND || isTransparentAssistant(node) || isInlineNoticeNode(node)
 }
 
 /**
@@ -215,7 +231,7 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   const idx = order.indexOf(nodeKey)
   if (idx < 0) return null
   const node = snapshot.nodes.get(nodeKey)
-  if (node === undefined || (node.kind !== TOOL_KIND && !isTransparentAssistant(node) && !isRetryNode(node))) return null
+  if (node === undefined || (node.kind !== TOOL_KIND && !isTransparentAssistant(node) && !isInlineNoticeNode(node))) return null
   let start = idx
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1])
@@ -234,13 +250,14 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   for (const key of keys) {
     const member = snapshot.nodes.get(key)
     if (member === undefined) continue
+    const transparent: boolean = isTransparentAssistant(member)
     if (member.kind === TOOL_KIND) {
       if (firstToolKey === undefined) firstToolKey = key
       items.push({ kind: 'tool', key, node: member })
-    } else if (isTransparentAssistant(member)) {
+    } else if (transparent) {
       items.push({ kind: 'think', key, node: member })
-    } else if (isRetryNode(member)) {
-      items.push({ kind: 'retry', key, node: member })
+    } else if (isInlineNoticeNode(member)) {
+      items.push({ kind: 'notice', cell: member.kind, key, node: member })
     }
   }
   // Leader: the first TOOL when the run has tools (its seat owns the bar),

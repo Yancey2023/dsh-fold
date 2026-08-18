@@ -20,11 +20,10 @@
 
 import * as React from 'react'
 import type { ChatNodeLike } from './group'
-import { eqGroup, groupOf, isGroupLeader, isRetryNode, latestWorkNode } from './group'
+import { eqGroup, groupOf, isGroupLeader, isInlineNoticeNode, latestWorkNode } from './group'
 import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
-import type { ToolGroup } from './group'
 import { AutoLoadHost } from './AutoLoadHost'
-import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
+import { eqTurnProcess, isProcessNode, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 import { officialNodeEntry, setConversationT } from './registry'
 import type { TranslateLike } from './registry'
 import { getGroupT } from './translate'
@@ -68,11 +67,6 @@ export interface NoticeNodeWrapperProps {
   [key: string]: unknown
 }
 
-/** A single-node group for the small fold bar. */
-function singleGroup(node: ChatNodeLike): ToolGroup {
-  return { leaderKey: node.key, itemKeys: [node.key], items: [], count: 1, running: undefined, runningItem: undefined }
-}
-
 /** Renders nothing but marks the seat as folded so its flowItem is hidden
  * (no 16px column gap for hidden members). */
 function FoldedSeat(): React.ReactElement {
@@ -84,7 +78,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
-  const retryGroup = useSession((snapshot) => (node.kind === 'model-retry' ? groupOf(snapshot.chat, node.key) : null), eqGroup)
+  const inlineGroup = useSession((snapshot) => (isInlineNoticeNode(node) ? groupOf(snapshot.chat, node.key) : null), eqGroup)
   const live = useSession((snapshot) => latestWorkNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
@@ -116,22 +110,28 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   setConversationT(((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined)
 
   let output: React.ReactNode
-  // Fail-soft: only act on the notice kinds this wrapper owns.
+  // Every non-text cell this wrapper owns folds WITH the adjacent work — no
+  // standalone bars. A notice never splits a chain: a member seat renders
+  // nothing (the leader's bar owns it), the leader of a notice/think-only
+  // group renders the group bar itself. Fail-soft: only act on the kinds we
+  // own, and a lone notice with no official view collapses to the hidden
+  // marker instead of a dead bar.
   if (!NOTICE_KINDS.has(node.kind)) {
     output = React.createElement(FoldedSeat, null)
-  } else if (isRetryNode(node) && retryGroup !== null) {
-    // model-retry (已重试模型请求) folds WITH the surrounding work group:
-    // a member seat renders nothing (the group leader's bar owns it); the
-    // leader of a retry/think-only group renders the group bar itself.
-    if (!isGroupLeader(retryGroup, node.key)) {
+  } else if (inlineGroup === null || !isGroupLeader(inlineGroup, node.key)) {
+    output = React.createElement(FoldedSeat, null)
+  } else {
+    const official = officialNodeEntry(node.kind)
+    const loneMissingOfficial = inlineGroup.count === 1 && (official === undefined || official.component == null)
+    if (loneMissingOfficial) {
       output = React.createElement(FoldedSeat, null)
     } else {
-      const conversationT = ((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined
+      const conversationT = (typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined
       const groupSmall = React.createElement(
         'div',
         { className: 'dshToolGroup', 'data-tool-group': '', 'data-notice': '' } as unknown as React.HTMLAttributes<HTMLDivElement>,
-        React.createElement(GroupBar, { group: retryGroup, expanded, onToggle: toggle, onKeyDown, t, live }),
-        expanded ? React.createElement(GroupItems, { group: retryGroup, t, conversationT }) : null,
+        React.createElement(GroupBar, { group: inlineGroup, expanded, onToggle: toggle, onKeyDown, t, live }),
+        expanded ? React.createElement(GroupItems, { group: inlineGroup, t, conversationT }) : null,
       )
       const first = node.key === turnInfo?.firstKey
       if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
@@ -142,41 +142,6 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
             : React.createElement(FoldedSeat, null)
       } else {
         output = groupSmall
-      }
-    }
-  } else {
-    const official = officialNodeEntry(node.kind)
-    const officialContent = official === undefined || official.component == null ? null : React.createElement(official.component as React.ComponentType<Record<string, unknown>>, props as Record<string, unknown>)
-    // Nothing to fold to (no official view exists): degrade to the hidden
-    // marker — a bar that expands to nothing would be worse.
-    if (officialContent === null) {
-      output = React.createElement(FoldedSeat, null)
-    } else {
-      const group = singleGroup(node)
-      const bar = React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live })
-      const notice = React.createElement(
-        'div',
-        { className: 'dshToolGroup', 'data-tool-group': '', 'data-notice': '' } as unknown as React.HTMLAttributes<HTMLDivElement>,
-        bar,
-        expanded ? React.createElement('div', { className: 'dshToolGroupItems' }, officialContent) : null,
-      )
-      // The turn's final summary is never a notice, but guard anyway.
-      if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
-        output = officialContent
-      } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-        const first = node.key === turnInfo.firstKey
-        if (!turnExpanded) {
-          output = first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
-        } else {
-          output = React.createElement(
-            React.Fragment,
-            null,
-            first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-            notice,
-          )
-        }
-      } else {
-        output = notice
       }
     }
   }

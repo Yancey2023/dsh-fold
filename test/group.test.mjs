@@ -249,7 +249,8 @@ function snapshot(order, nodes) {
   const g = groupOf(s, 't1')
   assert.ok(g && isGroupLeader(g, 't1'), 'tool leader owns the merged group')
   assert.equal(g.count, 5, 'count includes the retry notices')
-  assert.deepEqual(g.items.map((i) => i.kind), ['tool', 'retry', 'tool', 'retry', 'tool'], 'retries interleaved in order')
+  assert.deepEqual(g.items.map((i) => i.kind), ['tool', 'notice', 'tool', 'notice', 'tool'], 'retries interleaved in order')
+  assert.deepEqual(g.items.filter((i) => i.kind === 'notice').map((i) => i.cell), ['model-retry', 'model-retry'], 'retry items carry the cell key')
   assert.deepEqual([...g.itemKeys], ['t1', 'mr1', 't2', 'mr2', 't3'])
   assert.equal(g.runningItem?.kind, 'tool', 'live content still the running tool')
   assert.equal(g.runningItem?.key, 't3')
@@ -258,6 +259,35 @@ function snapshot(order, nodes) {
   const byMr = groupOf(s, 'mr1')
   assert.ok(byMr && byMr.leaderKey === 't1', 'retry member resolves to the same group')
   assert.equal(isGroupLeader(byMr, 'mr1'), false, 'retry is not the leader')
+}
+
+// context injection merges the same way: adjacent fold blocks become ONE.
+{
+  const ctx = (key) => ({ key, kind: 'context', location: { kind: 'turn', turn: { turn: 1 } }, data: {} })
+  const s = snapshot(['t1', 'ctx1', 't2'], [toolNode('t1', 1, settled('read')), ctx('ctx1'), toolNode('t2', 1, running('bash'))])
+  const g = groupOf(s, 't1')
+  assert.ok(g && isGroupLeader(g, 't1'), 'tool leader owns the merged group')
+  assert.equal(g.count, 3, 'context counts with the group')
+  assert.deepEqual(g.items.map((i) => i.kind), ['tool', 'notice', 'tool'], 'context interlaced in order')
+  assert.equal(g.items[1].cell, 'context', 'context item carries the cell key')
+  const byCtx = groupOf(s, 'ctx1')
+  assert.ok(byCtx && byCtx.leaderKey === 't1', 'context member resolves to the same group')
+  assert.equal(isGroupLeader(byCtx, 'ctx1'), false, 'context is not the leader')
+}
+
+// EVERY non-text notice merges: compaction and a /permission command between
+// tools fold into ONE bar with the tools, not separate bars.
+{
+  const note = (key, kind) => ({ key, kind, location: { kind: 'turn', turn: { turn: 1 } }, data: {} })
+  const s = snapshot(
+    ['t1', 'c1', 't2', 'cmd1', 't3'],
+    [toolNode('t1', 1, settled('read')), note('c1', 'compaction'), toolNode('t2', 1, settled('grep')), note('cmd1', 'command'), toolNode('t3', 1, running('bash'))],
+  )
+  const g = groupOf(s, 't1')
+  assert.ok(g && isGroupLeader(g, 't1'), 'tool leader owns the merged group')
+  assert.equal(g.count, 5, 'compaction + command count with the group')
+  assert.deepEqual(g.items.map((i) => i.kind), ['tool', 'notice', 'tool', 'notice', 'tool'])
+  assert.deepEqual(g.items.filter((i) => i.kind === 'notice').map((i) => i.cell), ['compaction', 'command'], 'cell keys preserved')
 }
 
 // A standalone retry (no adjacent tools/thinks) leads its own group.

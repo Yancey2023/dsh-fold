@@ -29,6 +29,7 @@ import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { AssistantNodeWrapper, setSlotsService } from './AssistantNodeWrapper'
 import { setGroupT } from './translate'
 import { setSessionsService } from './auto-load'
+import { setConversationT } from './registry'
 import { ToolCallGroupView } from './ToolCallGroupView'
 import { UserNodeWrapper } from './UserNodeWrapper'
 import { NoticeNodeWrapper } from './NoticeNodeWrapper'
@@ -74,6 +75,13 @@ export function apply(ctx: {
   // 1c. The sessions service powers scroll-to-top auto-load-older (the
   //     official loadOlder action is reached through the session scope).
   setSessionsService(ctx.get('sessions') as { scope(id: string): { get(name: string): unknown } | undefined } | undefined)
+  // 1d. The conversation-namespace translate is the fallback for every
+  //     official cell view that renders inside a folded group (model-retry,
+  //     context injection, compaction, …). The seat wrappers override it
+  //     with their own t, but the fallback ensures it's never undefined
+  //     even when the first visible seat is a tool-call (e.g. loaded window
+  //     starting mid-turn).
+  if (locale !== undefined) setConversationT(locale.bind('conversation'))
 
   // 2. Locale dictionaries.
   ctx.effect(() => locale.register('fold', DICTS), 'dsh-fold: dictionaries')

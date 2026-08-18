@@ -398,12 +398,32 @@ export interface GroupItemsProps {
   conversationT?: (key: string, params?: Record<string, unknown>) => string
 }
 
-/** One folded model-retry notice: the OFFICIAL retry row via the live
- * registry (same path every other delegated cell uses). */
-const RetryItem = React.memo(function RetryItem({ item, conversationT }: { item: GroupItem & { kind: 'retry' }; conversationT?: GroupItemsProps['conversationT'] }): React.ReactElement | null {
-  const official = officialNodeEntry('model-retry')
+/** One folded inline notice at its position inside the expanded group, via
+ * the OFFICIAL cell view from the live registry — except the two cells whose
+ * official renderers need the full seat kit:
+ *  - `command`: the product's CommandNodeView always lands on the internal
+ *    GenericCommandCard fallback (no commandview entry is registered), so we
+ *    pass a renderSlot that yields that official fallback — full fidelity;
+ *  - `workflow-run`: the official panel needs useSessions/sessionId/openSession,
+ *    absent here — a compact status row instead. */
+const DelegatedNoticeItem = React.memo(function DelegatedNoticeItem({ item, conversationT }: { item: GroupItem & { kind: 'notice' }; conversationT?: GroupItemsProps['conversationT'] }): React.ReactElement | null {
   const t = conversationT ?? getConversationT()
-  if (official === undefined || official.component == null || t === undefined) return null
+  if (t === undefined) return null
+  if (item.cell === 'workflow-run') {
+    const data = (item.node.data ?? {}) as { name?: string; status?: string }
+    return React.createElement(
+      'div',
+      { className: 'dshWorkflowRunItem' },
+      React.createElement('span', { className: 'dshWorkflowRunTitle' }, data.name ?? 'workflow'),
+      data.status !== undefined ? React.createElement('span', { className: 'dshWorkflowRunStatus' }, String(data.status)) : null,
+    )
+  }
+  const official = officialNodeEntry(item.cell)
+  if (official === undefined || official.component == null) return null
+  if (item.cell === 'command') {
+    const renderSlot = (_key: string, _owner: unknown, opts: { fallback?: React.ReactNode } | undefined): React.ReactNode => opts?.fallback ?? null
+    return React.createElement(official.component as React.ComponentType<Record<string, unknown>>, { node: item.node, t, renderSlot })
+  }
   return React.createElement(official.component as React.ComponentType<Record<string, unknown>>, { node: item.node, t })
 })
 
@@ -417,8 +437,8 @@ export const GroupItems = React.memo(function GroupItems(props: GroupItemsProps)
       if (item.kind === 'think') {
         return React.createElement(ThinkItem, { key: item.key, item, t })
       }
-      if (item.kind === 'retry') {
-        return React.createElement(RetryItem, { key: item.key, item, conversationT })
+      if (item.kind === 'notice') {
+        return React.createElement(DelegatedNoticeItem, { key: item.key, item, conversationT })
       }
       const root = item.node.data?.root
       if (root === undefined || renderSlot === undefined || openFile === undefined || inspectCall === undefined) return null

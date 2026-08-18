@@ -1,18 +1,22 @@
 # dsh-fold
 
-把 DeepSeek Harness（DSH）Web GUI 中**同一个 assistant turn 内连续的工具调用**折叠成一行（Codex 风格）：实时显示"正在运行"的工具名、累计调用数，支持展开/折叠。**过长的用户输入折叠为 3 行**，带独立的 展开/收起 按钮。
+把 DeepSeek Harness（DSH）Web GUI 中**同一个 assistant turn 内连续的工具调用**折叠成一行：实时显示"正在运行"的工具名、累计调用数，支持展开/折叠。**过长的用户输入折叠为 3 行**，带独立的 展开/收起 按钮。
 
 实现**纯 Slot / React**：不碰 DOM、不用 MutationObserver、不用 display:none、不用 querySelector；展开后的每张工具卡片都复用官方 renderer（用户气泡则用官方 primitives 重建）。
 
+![折叠块（工具合并/实时内容）](docs/fold-block.png)
+![轮次级大折叠](docs/fold-turn.png)
+![用户输入3行折叠](docs/fold-user-input.png)
+
 ## 行为
 
-- **分组规则**：`snapshot.chat.order` 中连续且同 turn 的 `tool-call` 节点归为一组。只含 reasoning（Think 行）的 assistant-step 节点是**透明的**：不切断链条，但随组折叠（折叠时隐藏，展开时按原顺序插回调用之间）。模型重试提示（"已重试模型请求"）同样透明——不会把链条切成独立小条，而是并入它中断的工作组、计入组块数，展开时在对应位置显示。没有相邻工具的 Think 行会折成**自己的条**（纯 Think 组）；正文节点里的 reasoning 部分同样被折叠——**只有 text 保持可见**。只有真正的 assistant **正文**（以及 user/steering、command、compaction…）才切断链条——已用真实 288 调用会话验证：旧规则下每个 step 的 Think 行把链切成 150 组；透明化后同一流只按正文切成 85 组。（DSH 数据模型里每个产生工具调用的 step 都会流式输出 reasoning block，若把 reasoning 当边界，每个调用都会被隔离成独立一组。）
+- **分组规则**：`snapshot.chat.order` 中连续且同 turn 的 `tool-call` 节点归为一组。只含 reasoning（Think 行）的 assistant-step 节点是**透明的**：不切断链条，但随组折叠（折叠时隐藏，展开时按原顺序插回调用之间）。模型重试提示（"已重试模型请求"）与上下文注入行（"上下文注入"）同样透明——不会把链条切成独立小条，而是并入相邻工作组（相邻折叠块合并成一条）、计入组块数，展开时在对应位置显示。没有相邻工具的 Think 行会折成**自己的条**（纯 Think 组）；正文节点里的 reasoning 部分同样被折叠——**只有 text 保持可见**。只有真正的 assistant **正文**（以及 user/steering、command、compaction…）才切断链条——已用真实 288 调用会话验证：旧规则下每个 step 的 Think 行把链切成 150 组；透明化后同一流只按正文切成 85 组。（DSH 数据模型里每个产生工具调用的 step 都会流式输出 reasoning block，若把 reasoning 当边界，每个调用都会被隔离成独立一组。）
 - **运行中**：折叠行只显示当前正在执行的工具（`正在运行 <工具名>`），右侧为累计数量（已完成+运行中）+ 箭头。当前调用结束后自动切换到下一个运行中的调用；全部结束（含 error/cancelled/interrupted——任何 `tool-result` 形态）后左侧留空。
 - **展开后**：顶部保留组条（箭头朝下），下方按真实执行顺序渲染**官方 `tool.call.toolview` 分发**的成员卡片——与产品 `ToolCallTree` 完全同一条分发路径，bash/read/grep/web 等卡片、status/参数/输出/错误/subcall/嵌套调用全部保持原生。展开过程中新调用实时追加，不会自动折叠（展开状态保存在组长 seat 的 React state，key 为首个调用的稳定节点 key）。
 - **轮次级大折叠**：一轮对话（一条用户消息 + 智能体整轮工作过程）在**结束并给出总结**后，除总结外的所有内容——工具调用、Think 行、中间正文——全部折进一个写着 `该轮次工作过程已折叠` 的大条。小折叠在大折叠**内部**：展开大折叠后小折叠在各自位置重现；总结正文始终可见。未结束的轮次或没有总结的轮次保持现状（仅小折叠）。
 - **折叠条文案**：折叠条显示 `N 个块已被折叠`——N 为折叠块数（工具调用 + 随组折叠的 Think 行；block 内部的 subcall 不重复计数）。运行中左侧显示 `正在运行 <工具>`。
 - **折叠条显示"当前对话最新状态"**：折叠条左侧显示当前对话**此时此刻正在做什么**——全局最新的活动块（不是组内标签）：流式 Think 行显示 `[Think] · <最新行>`；工作中的工具调用显示其真实行（terminal 调用为 `[icon] Bash · <命令描述>`，以及 `Read · <路径>`、`Search · <查询>`、`ask_user_question · <问题>`……即产品 `toolRowModel` 的逐字复刻）。调用执行中，正在跑的调用即"最新"；调用结束、模型再次思考时，Think 行接替显示；对话空闲时左侧留空。活动块**仅在折叠时**显示——展开后细节就在下方，折叠条左侧置空；真正承载该活动节点的折叠条额外带产品同款扫光动画。
-- **非文本块全部折叠**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）、用户命令如 `/permission`（`command`）、模型重试提示（`model-retry` ——"已重试模型请求"，**与它打断的周围工作合并成同一个折叠组**，展开时在对应位置重现重试行，并计入组块数）、轮次错误（`turn-error`）、max-tokens 提示（`turn-max-tokens`）、未知面（`unknown`）与 workflow 运行（`workflow-run`）都与其他工作块一样折叠——未结束轮次中各折成自己的 `1 个块已被折叠` 条（可展开，诊断仍可一键到达）；轮次以总结结束后并入轮次级大折叠。只有纯文本（用户/steering 消息、assistant 正文、总结及其复制/操作行）保持可见。
+- **非文本块全部折叠**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）、用户命令如 `/permission`（`command`）、模型重试提示（`model-retry` ——"已重试模型请求"与 `context` ——"上下文注入"，都**并入相邻工作组成同一个折叠组**：不单独成条、不切断链条，相邻折叠块合并成一条，展开时在对应位置重现该行并计入组块数）、轮次错误（`turn-error`）、max-tokens 提示（`turn-max-tokens`）、未知面（`unknown`）与 workflow 运行（`workflow-run`）都与其他工作块一样折叠——未结束轮次中各折成自己的 `1 个块已被折叠` 条（可展开，诊断仍可一键到达）；轮次以总结结束后并入轮次级大折叠。只有纯文本（用户/steering 消息、assistant 正文、总结及其复制/操作行）保持可见。
 - **用户输入**：文本超过 3 行的用户消息被钳制到 3 行，气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。钳制发生在**无 padding 的内层盒**上（`max-height: 72px` = 恰好 3 × 24px 行高）：任何浏览器都精确渲染 3 行并保留气泡底部空隙——旧式 line-clamp 行为（会露出半行第 4 行并吃掉底部 padding）被 max-height 硬切掉（headless Chromium 实证）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（`MessageText`、`/name` `@name` ref chip、`JsonBlock` 附加块、官方 `ImageGallery`、产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）。短消息原样渲染（clamp 无效果、按钮隐藏）。
 - **滑到顶部自动加载更早（连续）**：滚动到对话最顶部且存在更早历史时自动拉取下一页（`loadOlder`），无需点击按钮；产品的"加载更早"按钮保留作手动兜底。只要用户**继续停在顶部**且 `hasMore` 仍为真，就会一页接一页自动加载，直到历史耗尽或用户滚离顶部（每次加载完成后用刷新后的快照重新武装）。滚动容器通过产品自身的 `scrollerOf` 契约（`[data-conversation-scroll]`）解析，动作走会话作用域的官方 `conversation.loadOlder()`；阈值、`hasMore`、`loadingOlder`、in-flight pump 等守卫防止重复或滚动中途误触发。这是插件唯一一处行为性 DOM 读取（被动 scroll 监听），不做任何修补或改样式。
 

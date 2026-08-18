@@ -132,6 +132,8 @@ export const CSS = `
   font-size:12px;line-height:18px;
 }
 .dshToolGroupFallbackOutput[data-error=true]{color:var(--dsw-alias-state-error-primary)}
+.dshWorkflowRunItem{display:flex;align-items:center;gap:8px;font-size:14px;line-height:24px;color:var(--dsw-alias-label-secondary)}
+.dshWorkflowRunStatus{color:var(--dsw-alias-label-tertiary)}
 /* ------------------------------------------------------------------ */
 /* User message: product UserStyleBubble replica + 3-line fold.        */
 /* ------------------------------------------------------------------ */

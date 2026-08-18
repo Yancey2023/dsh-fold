@@ -1,23 +1,18 @@
 # dsh-fold
 
 Fold **consecutive tool calls inside one assistant turn** in the DeepSeek
-Harness (DSH) Web GUI into a single line — Codex-style — with a live
-running-tool label, a running call count, and expand/collapse. **Long user
-input is folded to 3 lines** with its own 展开/收起 toggle.
+Harness (DSH) Web GUI into a single line with a live
+running-tool label, a running call count, and expand/collapse. Long user
+input is folded to 3 lines with its own toggle.
 
 Implementation is **pure Slot / React**. No DOM patching, no `MutationObserver`,
 no `display:none`, no `querySelector` games — the official product renderers
 are reused for every expanded tool card (and the user bubble is rebuilt from
 official primitives).
 
-![collapse states](docs/states.svg)
-
-```
-正在运行 bash                                        3   ▸     <- one tool running
-                                                   12   ▸     <- all settled (left side empty)
-                                                   4    ▾     <- expanded
-                                                             (official tool cards, in order)
-```
+![折叠块（工具合并/实时内容）](docs/fold-block.png)
+![轮次级大折叠](docs/fold-turn.png)
+![用户输入3行折叠](docs/fold-user-input.png)
 
 ## Behaviour
 
@@ -26,9 +21,10 @@ official primitives).
   Assistant-step nodes whose blocks contain ONLY reasoning (Think rows) are
   TRANSPARENT: they neither split chains, but fold WITH the group (hidden
   while collapsed, re-shown between the calls when expanded). Model-retry
-  notices (已重试模型请求) are transparent the same way — they never split a
-  chain into separate bars; the retry row folds in with the work it
-  interrupted and counts toward the group's block count. Think rows
+  notices (已重试模型请求) and context-injection rows (上下文注入) are
+  transparent the same way — they never split a chain into separate bars;
+  the row folds in with the adjacent work (neighboring fold blocks merge
+  into one bar) and counts toward the group's block count. Think rows
   with NO adjacent tools fold into their OWN bar (think-only group). The
   reasoning part of a text-bearing node is folded away too — **only text
   stays visible**. Only real assistant TEXT (and user/steering messages,
