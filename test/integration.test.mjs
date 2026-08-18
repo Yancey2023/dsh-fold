@@ -81,9 +81,10 @@ const officialDispose = core.register(
   () => 'OFFICIAL_TREE',
 )
 core.register({ name: 'tool.call.toolview', key: 'bash' }, ({ block }) => `BASH_CARD:${block.callId}`)
+const memoizedOfficialAssistant = React.memo(() => 'OFFICIAL_ASSISTANT')
 const officialAssistantDispose = core.register(
   { name: 'conversation.chat.node', key: 'assistant-step', locale: 'conversation' },
-  () => 'OFFICIAL_ASSISTANT',
+  memoizedOfficialAssistant,
 )
 
 // Overlay + plugin registrations (identical child spec co-declaration).
@@ -216,7 +217,8 @@ shadowDispose()
 assistantShadowDispose()
 const winner = cellWinner(core, 'conversation.chat.node', 'tool-call')
 assert.equal(winner.component(), 'OFFICIAL_TREE', 'official renderer restored')
-assert.equal(cellWinner(core, 'conversation.chat.node', 'assistant-step').component(), 'OFFICIAL_ASSISTANT', 'official assistant restored')
+const assistantWinner = cellWinner(core, 'conversation.chat.node', 'assistant-step')
+assert.equal(assistantWinner.component, memoizedOfficialAssistant, 'official assistant restored (memo object identity)')
 assert.equal(core.records.get('tool.call.toolview').spec.kind, 'keyed', 'child slot still declared')
 assert.equal(core.records.get('tool.call.toolview').entries.length, 1, 'bash toolview still registered')
 restoreOverlay()

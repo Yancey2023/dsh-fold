@@ -41,7 +41,10 @@ function makeProps(snapshot, nodeKey) {
 
 // The live slots service: official assistant entry at priority 0, plus the
 // plugin's own shadow entry at -100 (both must be visible via entries()).
-const officialAssistant = () => 'OFFICIAL_ASSISTANT'
+// The official entry is React.memo-wrapped EXACTLY like the product's
+// AssistantNodeView (memo returns an object, not a function) — delegation
+// must accept it.
+const officialAssistant = React.memo(() => 'OFFICIAL_ASSISTANT')
 setSlotsService({
   entries(key) {
     assert.equal(key, 'conversation.chat.node')

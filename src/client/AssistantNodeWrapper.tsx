@@ -66,7 +66,9 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
   if (probe !== null && probe.grouped) return null
 
   const official = officialAssistantEntry()
-  if (official === undefined || typeof official.component !== 'function') return null
+  // React.memo returns an OBJECT (not a function), so only reject absent
+  // entries — never shape-check the component.
+  if (official === undefined || official.component == null) return null
   // Delegate with this seat's full composed kit (same props the renderer
   // would pass to the official view when it wins the cell).
   return React.createElement(official.component as React.ComponentType<Record<string, unknown>>, props as Record<string, unknown>)

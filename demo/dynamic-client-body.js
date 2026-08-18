@@ -189,7 +189,7 @@ var AssistantNodeWrapper = React.memo(function AssistantNodeWrapper2(props) {
   );
   if (probe !== null && probe.grouped) return null;
   const official = officialAssistantEntry();
-  if (official === void 0 || typeof official.component !== "function") return null;
+  if (official === void 0 || official.component == null) return null;
   return React.createElement(official.component, props);
 });
 
