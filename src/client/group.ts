@@ -55,6 +55,13 @@ export interface RunningToolBlock {
   readonly turn?: number
   readonly step?: number
   readonly time?: number
+  /** Tool-authored call-side presentation (terminal card: title/description/cwd). */
+  readonly callView?: {
+    readonly card?: string
+    readonly title?: string
+    readonly description?: string
+    readonly cwd?: string
+  }
   readonly subCalls?: readonly ToolBlockLike[]
 }
 
@@ -96,6 +103,14 @@ export interface ToolGroup {
   readonly count: number
   /** The first still-running tool block, or undefined once every call settled. */
   readonly running: ToolBlockLike | undefined
+  /**
+   * The folded item whose live content the collapsed bar shows: the first
+   * still-running TOOL if any (a working call), otherwise the LAST still-
+   * streaming THINK row (reasoning currently being produced). undefined when
+   * nothing is working/streaming. The product keeps the preceding think node
+   * in `running` state while its tool call executes, so tools take priority.
+   */
+  readonly runningItem: GroupItem | undefined
 }
 
 const TOOL_KIND = 'tool-call'
@@ -191,14 +206,24 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   const leaderKey = firstToolKey ?? keys[0]
   if (leaderKey === undefined) return null
   let running: ToolBlockLike | undefined
+  let runningToolItem: GroupItem | undefined
+  let runningThinkItem: GroupItem | undefined
   for (const item of items) {
-    if (item.kind !== 'tool') continue
+    if (item.kind !== 'tool') {
+      // Think rows stream while their assistant step is running.
+      if (runningThinkItem === undefined && item.node.data?.status === 'running') runningThinkItem = item
+      continue
+    }
     const block = item.node.data?.root
     if (running === undefined && isRunningBlock(block)) running = block
+    if (runningToolItem === undefined && isRunningBlock(block)) runningToolItem = item
   }
+  // The bar's live content: a working call first (its node stays 'running'
+  // while the call executes), otherwise the newest streaming think row.
+  const runningItem = runningToolItem ?? runningThinkItem
   // Count of FOLDED BLOCKS: tool rows + think rows (the bar reports
   // "{count} 个块已被折叠").
-  return { leaderKey, itemKeys: keys, items, count: items.length, running }
+  return { leaderKey, itemKeys: keys, items, count: items.length, running, runningItem }
 }
 
 /** Whether this seat is the group leader (the only one that renders). */

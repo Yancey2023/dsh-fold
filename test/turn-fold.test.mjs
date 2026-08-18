@@ -83,18 +83,40 @@ function snapshot(order, nodes, turnEnds) {
 }
 
 // ---------------------------------------------------------------------------
-// Different turns are independent; eqTurnProcess is reference-stable.
+// Notice kinds join the big fold: compaction / context / command nodes are
+// process nodes; the summary stays the last text-bearing assistant node.
 // ---------------------------------------------------------------------------
 {
-  const s = snapshot(['t1', 'aSum'], [toolNode('t1', 1, settled('read')), assistantNode('aSum', 1, [textBlock('总结')])], new Map([[1, 999]]))
-  const a = turnProcessOf(s, 't1')
-  const b = turnProcessOf(s, 't1')
-  assert.ok(a && b)
-  assert.equal(eqTurnProcess(a, b), true)
-  assert.equal(eqTurnProcess(a, null), false)
-  const s2 = snapshot(['t1', 'aSum'], [toolNode('t1', 1, settled('read')), assistantNode('aSum', 1, [textBlock('总结')])], new Map([[2, 999]]))
-  const c = turnProcessOf(s2, 't1')
-  assert.equal(c, null, 'turn 2 not closed')
+  const notice = (key, kind) => ({ key, kind, location: { kind: 'turn', turn: { turn: 1 } }, data: {} })
+  const s = snapshot(
+    ['c1', 'u1', 'aTh', 't1', 'ctx1', 'cmd1', 'aSum'],
+    [
+      notice('c1', 'compaction'),
+      notice('u1', 'user'),
+      assistantNode('aTh', 1, [think('reasoning')]),
+      toolNode('t1', 1, settled('read')),
+      notice('ctx1', 'context'),
+      notice('cmd1', 'command'),
+      assistantNode('aSum', 1, [textBlock('最终总结')]),
+    ],
+    new Map([[1, 999]]),
+  )
+  const info = turnProcessOf(s, 'c1')
+  assert.ok(info, 'closed summarized turn folds')
+  assert.equal(info.summaryKey, 'aSum')
+  assert.equal(info.firstKey, 'c1', 'compaction leads the fold when first')
+  assert.deepEqual([...info.keys], ['c1', 'aTh', 't1', 'ctx1', 'cmd1'], 'compaction/context/command are process nodes; user is not')
+  assert.equal(isProcessNode(info, 'u1'), false, 'user node stays visible')
+  assert.equal(isProcessNode(info, 'ctx1'), true)
+  assert.equal(isProcessNode(info, 'cmd1'), true)
+}
+
+// A closed turn with only a compaction notice (no assistant summary) does
+// not big-fold (nothing to summarize against) — the notice keeps its small
+// bar instead.
+{
+  const s = snapshot(['c1'], [{ key: 'c1', kind: 'compaction', location: { kind: 'turn', turn: { turn: 2 } }, data: {} }], new Map([[2, 999]]))
+  assert.equal(turnProcessOf(s, 'c1'), null, 'no summary -> no big fold')
 }
 
 console.log('turn-fold.test: all assertions passed')

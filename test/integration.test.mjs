@@ -54,7 +54,7 @@ function toolNode(key, turn, root) {
   return { key, kind: 'tool-call', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { root } }
 }
 function running(name) {
-  return { callId: `c-${name}`, name, argsRaw: '{}', turn: 1, step: 1, subCalls: [] }
+  return { callId: `c-${name}`, name, argsRaw: JSON.stringify({ command: 'echo hi' }), turn: 1, step: 1, subCalls: [] }
 }
 function settled(name, isError = false) {
   return { kind: 'tool-result', callId: `c-${name}`, call: { name, argsRaw: '{}' }, content: [{ type: 'text', text: 'ok' }], isError, subCalls: [] }
@@ -140,7 +140,7 @@ const render = renderer(core, session, dicts)
   const node = session.chat.nodes.get('t1')
   const root = create(render('conversation.chat.node', shadowEntry, { node, selectedCallId: undefined, cwd: '/ws', openFile: () => {}, inspectCall: () => {} }))
   const text = textOf(root.toJSON())
-  assert.ok(text.includes('正在运行') && text.includes('bash'), 'running label')
+  assert.ok(text.includes('正在运行') && text.includes('Bash') && text.includes('echo hi'), 'live block row (visually hidden label + Bash · command)')
   assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   assert.ok(!text.includes('OFFICIAL_TREE'), 'official tree hidden')
 

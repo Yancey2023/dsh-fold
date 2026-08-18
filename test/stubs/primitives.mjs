@@ -6,7 +6,12 @@ function Icon({ size = 14, className }) {
 }
 export const IconChevronRightOutline14 = Icon
 export const IconChevronDownOutline14 = Icon
+export const IconChevronUpOutline14 = Icon
 export const IconThinkOutline14 = Icon
+export const IconCopyOutline16 = Icon
+export const IconCheckOutline16 = Icon
+export const IconApiOutline14 = Icon
+export const IconQuestionOutline14 = Icon
 
 export function DisclosureRow({ icon, title, open, expandable, onToggle, expandOnRowClick = false, collapsedContent, children, rowClassName, leadingClassName, titleClassName, chevronClassName }) {
   const row = React.createElement(
@@ -17,4 +22,20 @@ export function DisclosureRow({ icon, title, open, expandable, onToggle, expandO
     collapsedContent,
   )
   return React.createElement('div', { 'data-open': open || undefined }, row, open ? children : null)
+}
+
+export function MessageText({ text }) {
+  return React.createElement('div', { 'data-message-text': true }, text)
+}
+
+export function JsonBlock({ label, payload }) {
+  return React.createElement('div', { 'data-json-block': true, 'data-label': label }, JSON.stringify(payload))
+}
+
+export function Tooltip({ label, children }) {
+  return React.createElement('div', { 'data-tooltip': label }, children)
+}
+
+export function writeClipboard() {
+  return Promise.resolve(true)
 }

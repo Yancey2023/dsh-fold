@@ -26,15 +26,18 @@
  */
 
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
-import { AssistantNodeWrapper, setGroupT, setSlotsService } from './AssistantNodeWrapper'
+import { AssistantNodeWrapper, setSlotsService } from './AssistantNodeWrapper'
+import { setGroupT } from './translate'
 import { ToolCallGroupView } from './ToolCallGroupView'
+import { UserNodeWrapper } from './UserNodeWrapper'
+import { NoticeNodeWrapper } from './NoticeNodeWrapper'
 import { insertStyle } from './styles'
 import { installSlotCoreOverlay } from './slots-core-overlay'
 
 /** Locale dictionaries for this package's namespace. */
 const DICTS: Record<'zh' | 'en', Record<string, string>> = {
-  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠', turnFolded: '该轮次工作过程已折叠' },
-  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded', turnFolded: 'Turn work process folded' },
+  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠', turnFolded: '该轮次工作过程已折叠', expand: '展开', collapse: '收起' },
+  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded', turnFolded: 'Turn work process folded', expand: 'Expand', collapse: 'Collapse' },
 }
 
 export const name = 'tool-group'
@@ -108,4 +111,45 @@ export function apply(ctx: {
       ) as () => void,
     'dsh-tool-group: assistant-step shadow',
   )
+
+  // 6. Shadow the user cell: long user input folds to 3 lines behind a
+  //    展开/收起 toggle. Conversation locale (the replica needs product keys
+  //    like image.label / copy / clock.md); the toggle labels come from the
+  //    shared tool-group translate.
+  ctx.effect(
+    () =>
+      slots.register(
+        {
+          name: 'conversation.chat.node',
+          key: 'user',
+          priority: -100,
+          locale: 'conversation',
+        },
+        UserNodeWrapper,
+      ) as () => void,
+    'dsh-tool-group: user shadow',
+  )
+
+  // 7. Shadow the non-text notice cells — automatic compaction, context
+  //    injection, manual compaction, user commands (/permission …):
+  //    everything except plain text folds. `command` re-declares the
+  //    commandview child slot (the overlay treats the identical spec as a
+  //    shared co-declaration), so the official CommandNodeView keeps its
+  //    keyed command cards when expanded.
+  for (const key of ['compaction', 'context', 'manual-compaction', 'command']) {
+    ctx.effect(
+      () =>
+        slots.register(
+          {
+            name: 'conversation.chat.node',
+            key,
+            priority: -100,
+            locale: 'conversation',
+            ...(key === 'command' ? { children: { 'conversation.chat.commandview': { kind: 'keyed', scope: 'session' } } } : {}),
+          },
+          NoticeNodeWrapper,
+        ) as () => void,
+      `dsh-tool-group: ${key} shadow`,
+    )
+  }
 }

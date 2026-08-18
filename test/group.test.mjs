@@ -239,4 +239,58 @@ function snapshot(order, nodes) {
   assert.deepEqual([...g2.itemKeys], ['a2'])
 }
 
+// ---------------------------------------------------------------------------
+// runningItem: the folded bar's live content.
+// ---------------------------------------------------------------------------
+
+// A running tool wins over any still-running think row (the think node stays
+// 'running' while its call executes; the working call is what the bar shows).
+{
+  const s = snapshot(
+    ['a1', 't1', 't2'],
+    [
+      assistantNode('a1', 1, [think('reasoning while t1 runs')], 'running'),
+      toolNode('t1', 1, settled('read')),
+      toolNode('t2', 1, running('bash')),
+    ],
+  )
+  const g = groupOf(s, 'a1')
+  assert.ok(g, 'group exists')
+  assert.equal(g.runningItem?.kind, 'tool', 'running tool beats the still-running think')
+  assert.equal(g.runningItem?.key, 't2', 'first running tool in flow order')
+}
+
+// Only a streaming think (no tool yet): the bar shows the NEWEST think row.
+{
+  const s = snapshot(
+    ['a1', 'a2'],
+    [assistantNode('a1', 1, [think('older reasoning')], 'settled'), assistantNode('a2', 1, [think('streaming now')], 'running')],
+  )
+  const g = groupOf(s, 'a1')
+  assert.ok(g, 'group exists')
+  assert.equal(g.runningItem?.kind, 'think')
+  assert.equal(g.runningItem?.key, 'a2', 'newest streaming think row wins')
+}
+
+// All settled / no streaming: no live content.
+{
+  const s = snapshot(
+    ['a1', 't1'],
+    [assistantNode('a1', 1, [think('done')]), toolNode('t1', 1, settled('read'))],
+  )
+  const g = groupOf(s, 'a1')
+  assert.ok(g, 'group exists')
+  assert.equal(g.runningItem, undefined)
+  assert.equal(g.running, undefined)
+}
+
+// Think-only group while streaming: runningItem is the think itself.
+{
+  const s = snapshot(['a1'], [assistantNode('a1', 1, [think('streaming line')], 'running')])
+  const g = groupOf(s, 'a1')
+  assert.ok(g, 'group exists')
+  assert.equal(g.runningItem?.kind, 'think')
+  assert.equal(g.running, undefined, 'no tool block running')
+}
+
 console.log('group.test: all assertions passed')

@@ -36,11 +36,12 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node test/group.test.mjs && node test/turn-fold.test.mjs && node test/overlay.test.mjs && node test/bundle-smoke.mjs && node test/component.test.mjs && node test/assistant.test.mjs && node test/integration.test.mjs",
+    "test": "node test/group.test.mjs && node test/tool-row.test.mjs && node test/turn-fold.test.mjs && node test/overlay.test.mjs && node test/bundle-smoke.mjs && node test/component.test.mjs && node test/assistant.test.mjs && node test/user.test.mjs && node test/notice.test.mjs && node test/integration.test.mjs",
     "install:dsh": "node scripts/install-dsh.cjs",
     "uninstall:dsh": "node scripts/install-dsh.cjs uninstall"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-attachment": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.7",
     "@types/react": "~18.3.1",
     "esbuild": "^0.24.2",
@@ -50,7 +51,9 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-attachment": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.7",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.7",
     "react": "^18.3.1"

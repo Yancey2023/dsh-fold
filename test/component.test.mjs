@@ -21,7 +21,7 @@ function toolNode(key, turn, root) {
   return { key, kind: 'tool-call', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { root } }
 }
 function running(name) {
-  return { callId: `c-${name}`, name, argsRaw: '{}', turn: 1, step: 1, subCalls: [] }
+  return { callId: `c-${name}`, name, argsRaw: JSON.stringify({ command: 'echo hi' }), turn: 1, step: 1, subCalls: [] }
 }
 function settled(name) {
   return { kind: 'tool-result', callId: `c-${name}`, call: { name, argsRaw: '{}' }, content: [{ type: 'text', text: 'ok' }], isError: false, subCalls: [] }
@@ -72,14 +72,16 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// Case 1: single running tool -> "正在运行 bash" + count 1 + chevron right.
+// Case 1: single running tool -> the LIVE BLOCK row (Bash · command), not a
+// bare "正在运行 bash" label; count 1 + chevron right.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['t1'], [toolNode('t1', 1, running('bash'))])
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
-  assert.ok(text.includes('正在运行'), 'running label present')
-  assert.ok(text.includes('bash'), 'running tool name present')
+  assert.ok(text.includes('正在运行'), 'visually hidden running label kept (a11y)')
+  assert.ok(text.includes('Bash'), 'the block title shows, not the wire name')
+  assert.ok(text.includes('echo hi'), 'the block summary (command) shows')
   assert.ok(text.includes('1 个块已被折叠'), 'folded label present')
   const json = root.toJSON()
   assert.equal(json.props['data-state'], 'running')
@@ -87,13 +89,13 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// Case 2: read✓ grep✓ bash running -> count 3, label bash.
+// Case 2: read✓ grep✓ bash running -> count 3, live row = Bash · command.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['t1', 't2', 't3'], [toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('grep')), toolNode('t3', 1, running('bash'))])
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
-  assert.ok(text.includes('正在运行') && text.includes('bash'), 'only the running tool shows')
+  assert.ok(text.includes('Bash') && text.includes('echo hi'), 'only the running block row shows')
   assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   root.unmount()
 }
@@ -189,7 +191,7 @@ function childrenOf(node) {
   const snapshot = makeSession(['t1'], [toolNode('t1', 1, running('bash'))])
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1', 'en')))
   const enText = textOf(root.toJSON())
-  assert.ok(enText.includes('Running') && enText.includes('bash'), 'en label')
+  assert.ok(enText.includes('Running') && enText.includes('Bash') && enText.includes('echo hi'), 'en live row')
   root.unmount()
 }
 
@@ -210,7 +212,7 @@ function childrenOf(node) {
   // Collapsed: ONE bar; 4 folded blocks (2 tools + 2 think rows); think text hidden.
   let text = textOf(root.toJSON())
   assert.ok(text.includes('4 个块已被折叠'), 'folded blocks = tools + think rows')
-  assert.ok(text.includes('正在运行') && text.includes('bash'), 'running label')
+  assert.ok(text.includes('Bash') && text.includes('echo hi'), 'live row: the running bash block')
   assert.ok(!text.includes('first reasoning') && !text.includes('second reasoning'), 'think rows hidden while collapsed')
   // Expanded: think rows shown in flow order between the official cards.
   act(() => {

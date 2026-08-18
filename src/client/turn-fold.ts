@@ -41,6 +41,15 @@ function isThinkOnly(node: ChatNodeLike): boolean {
 }
 
 /**
+ * Node kinds that belong to the turn's work process and fold with the big
+ * fold: tool calls, assistant steps (Think rows / intermediate text) and the
+ * non-text notice rows (automatic compaction, context injection, manual
+ * compaction, user commands such as /permission). Everything else — user
+ * messages, steering, summary text, error notices — stays visible.
+ */
+export const FOLDABLE_KINDS = new Set(['tool-call', 'assistant-step', 'compaction', 'context', 'manual-compaction', 'command'])
+
+/**
  * Compute the big-fold context for the node with `nodeKey`, or null when the
  * turn is still open, has no summary, or has nothing to fold.
  */
@@ -52,12 +61,12 @@ export function turnProcessOf(session: TurnSessionLike, nodeKey: string): TurnPr
   const turnEnds = session.turnEnds
   if (turnEnds === undefined || !turnEnds.has(turn)) return null
 
-  // This turn's tool/assistant nodes in flow order.
+  // This turn's work-process nodes in flow order.
   const turnNodes: ChatNodeLike[] = []
   for (const key of session.chat.order) {
     const member = session.chat.nodes.get(key)
     if (member === undefined || turnOf(member) !== turn) continue
-    if (member.kind === 'tool-call' || member.kind === 'assistant-step') turnNodes.push(member)
+    if (FOLDABLE_KINDS.has(member.kind)) turnNodes.push(member)
   }
 
   // Summary: the LAST text-bearing assistant node of the turn.

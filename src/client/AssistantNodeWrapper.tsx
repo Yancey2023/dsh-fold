@@ -28,6 +28,10 @@ import type { AssistantBlockLike } from './group'
 import type { ChatNodeLike } from './group'
 import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
+import { getGroupT } from './translate'
+import { officialNodeEntry } from './registry'
+export { setGroupT } from './translate'
+export { setSlotsService } from './registry'
 
 export interface AssistantNodeWrapperProps {
   /** The assistant-step node owned by this seat. */
@@ -40,32 +44,9 @@ export interface AssistantNodeWrapperProps {
   [key: string]: unknown
 }
 
-/** The live slots service (set by the plugin entry before registration). */
-let slotsService:
-  | {
-      entries(key: string): Array<{ options: { key?: string; priority?: number }; component: unknown }>
-    }
-  | undefined
-
-/** tool-group namespace translate for folded bars (set by the plugin entry). */
-let groupT: ((key: string, params?: Record<string, unknown>) => string) | undefined
-
-export function setSlotsService(service: typeof slotsService): void {
-  slotsService = service
-}
-
-export function setGroupT(t: typeof groupT): void {
-  groupT = t
-}
-
 /** The product's AssistantNodeView entry (priority 0), when registered. */
-function officialAssistantEntry():
-  | { component: unknown }
-  | undefined {
-  const service = slotsService
-  if (service === undefined) return undefined
-  const all = service.entries('conversation.chat.node')
-  return all.find((entry) => entry.options.key === 'assistant-step' && (entry.options.priority ?? 0) === 0)
+function officialAssistantEntry(): { component: unknown } | undefined {
+  return officialNodeEntry('assistant-step')
 }
 
 /** Official text rendering with reasoning blocks folded away. */
@@ -118,7 +99,7 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
     [turnToggle],
   )
 
-  const t = groupT ?? ((key: string, params?: Record<string, unknown>) => (params && 'count' in params ? String(params.count) : key))
+  const t = getGroupT() ?? ((key: string, params?: Record<string, unknown>) => (params && 'count' in params ? String(params.count) : key))
 
   // The think-group (small fold) content for the leader seat.
   const thinkContent =

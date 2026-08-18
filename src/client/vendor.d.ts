@@ -42,7 +42,12 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   import type { FC, ReactNode, SVGProps } from 'react'
   export const IconChevronRightOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const IconChevronDownOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const IconChevronUpOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const IconThinkOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const IconCheckOutline16: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const IconCopyOutline16: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const IconApiOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  export const IconQuestionOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const DisclosureRow: FC<{
     icon?: ReactNode
     title?: ReactNode
@@ -60,4 +65,52 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     chevronClassName?: string
     titleClassName?: string
   }>
+  export const MessageText: FC<{ text: string }>
+  export const JsonBlock: FC<{
+    label: string
+    payload: unknown
+    defaultOpen?: boolean
+    truncatedLabel?: (total: number) => string
+  }>
+  export const Tooltip: FC<{
+    label: string | (() => string)
+    side?: 'right' | 'bottom' | 'top'
+    delayMs?: number
+    disabled?: boolean
+    maxWidth?: number
+    children?: ReactNode
+  }>
+  export function writeClipboard(text: string): Promise<boolean>
+}
+
+declare module '@deepseek-ai/dsh-client-ui-attachment' {
+  import type { FC } from 'react'
+  import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+  export interface ImageLightboxLabels {
+    dialog: string
+    close: string
+  }
+  export interface MessageImageLabels {
+    image: string
+    open: string
+    openNamed: (label: string) => string
+    loading: string
+    loadFailed: string
+    lightbox: ImageLightboxLabels
+  }
+  export const ImageGallery: FC<{
+    images: readonly { attachment: ImageAttachmentRef }[]
+    load: (attachment: ImageAttachmentRef) => Promise<string>
+    align: 'start' | 'end'
+    labels: MessageImageLabels
+  }>
+}
+
+declare module '@deepseek-ai/dsh-attachment' {
+  /** Durable image reference (minimal structural mirror; passed through only). */
+  export interface ImageAttachmentRef {
+    id: string
+    url?: string
+    name?: string
+  }
 }

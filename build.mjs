@@ -73,6 +73,17 @@ await build({
   logLevel: 'info',
 })
 
+// ESM mirror of the running-tool row model, for node-based unit tests.
+await build({
+  entryPoints: ['src/client/tool-row.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node18',
+  outfile: 'lib/client-tool-row.mjs',
+  logLevel: 'info',
+})
+
 // ESM mirror of the group view component (icons stubbed), for render tests.
 await build({
   entryPoints: ['src/client/ToolCallGroupView.tsx'],
@@ -111,4 +122,34 @@ await build({
   logLevel: 'info',
 })
 
-console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-component.mjs, lib/client-assistant.mjs, lib/client-turn-fold.mjs')
+// ESM mirror of the user wrapper (primitives + attachment stubbed), for
+// render tests.
+await build({
+  entryPoints: ['src/client/UserNodeWrapper.tsx'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node18',
+  outfile: 'lib/client-user.mjs',
+  external: ['react', 'react/jsx-runtime'],
+  alias: {
+    '@deepseek-ai/dsh-client-ui-primitives': './test/stubs/primitives.mjs',
+    '@deepseek-ai/dsh-client-ui-attachment': './test/stubs/attachment.mjs',
+  },
+  logLevel: 'info',
+})
+
+// ESM mirror of the notice wrapper (primitives stubbed), for render tests.
+await build({
+  entryPoints: ['src/client/NoticeNodeWrapper.tsx'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node18',
+  outfile: 'lib/client-notice.mjs',
+  external: ['react', 'react/jsx-runtime'],
+  alias: { '@deepseek-ai/dsh-client-ui-primitives': './test/stubs/primitives.mjs' },
+  logLevel: 'info',
+})
+
+console.log('build ok: lib/index.js, lib/client.js, lib/client-overlay.mjs, lib/client-group.mjs, lib/client-tool-row.mjs, lib/client-component.mjs, lib/client-assistant.mjs, lib/client-user.mjs, lib/client-notice.mjs, lib/client-turn-fold.mjs')

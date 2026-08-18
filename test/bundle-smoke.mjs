@@ -17,7 +17,22 @@ const moduleTable = {
   react: realReact,
   'react/jsx-runtime': requireFrom('react/jsx-runtime'),
   '@deepseek-ai/dsh-client-ui-slots': realSlots,
-  '@deepseek-ai/dsh-client-ui-primitives': { IconChevronRightOutline14: () => null, IconChevronDownOutline14: () => null },
+  '@deepseek-ai/dsh-client-ui-primitives': {
+    IconChevronRightOutline14: () => null,
+    IconChevronDownOutline14: () => null,
+    IconChevronUpOutline14: () => null,
+    IconCheckOutline16: () => null,
+    IconCopyOutline16: () => null,
+    IconThinkOutline14: () => null,
+    IconApiOutline14: () => null,
+    IconQuestionOutline14: () => null,
+    DisclosureRow: () => null,
+    MessageText: () => null,
+    JsonBlock: () => null,
+    Tooltip: () => null,
+    writeClipboard: () => Promise.resolve(true),
+  },
+  '@deepseek-ai/dsh-client-ui-attachment': { ImageGallery: () => null },
 }
 
 const source = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
@@ -101,10 +116,15 @@ registeredPlugin.apply({
 assert.equal(realSlots.SlotCore.prototype.register !== realRegister, true, 'overlay must replace register on the real SlotCore')
 assert.equal(realSlots.SlotCore.prototype.releaseEntry !== realRelease, true, 'overlay must replace releaseEntry on the real SlotCore')
 
-assert.equal(registrations.length, 2, 'two shadows: tool-call + assistant-step')
+assert.equal(registrations.length, 7, 'seven shadows: tool-call + assistant-step + user + 4 notices')
 const toolEntry = registrations.find((r) => r.options.key === 'tool-call')
 const assistantEntry = registrations.find((r) => r.options.key === 'assistant-step')
-assert.ok(toolEntry && assistantEntry, 'both cells registered')
+const userEntry = registrations.find((r) => r.options.key === 'user')
+assert.ok(toolEntry && assistantEntry && userEntry, 'tool-call / assistant-step / user registered')
+const noticeKeys = ['compaction', 'context', 'manual-compaction', 'command']
+for (const key of noticeKeys) {
+  assert.ok(registrations.some((r) => r.options.key === key), `${key} shadow registered`)
+}
 
 const { options, component } = toolEntry
 assert.equal(options.name, 'conversation.chat.node')
@@ -121,10 +141,25 @@ assert.equal(aOptions.priority, -100)
 assert.equal(aOptions.locale, 'conversation')
 assert.ok(assistantEntry.component !== undefined, 'assistant wrapper registered')
 
+const uOptions = userEntry.options
+assert.equal(uOptions.name, 'conversation.chat.node')
+assert.equal(uOptions.key, 'user')
+assert.equal(uOptions.priority, -100)
+assert.equal(uOptions.locale, 'conversation')
+assert.ok(userEntry.component !== undefined, 'user wrapper registered')
+
+const commandEntry = registrations.find((r) => r.options.key === 'command')
+assert.deepEqual(commandEntry.options.children, { 'conversation.chat.commandview': { kind: 'keyed', scope: 'session' } }, 'command shadow co-declares the commandview child slot')
+const compactionEntry = registrations.find((r) => r.options.key === 'compaction')
+assert.equal(compactionEntry.options.children, undefined, 'notice seats without children declare none')
+assert.equal(compactionEntry.options.locale, 'conversation')
+
 assert.equal(localeRegistrations.length, 1)
 assert.equal(localeRegistrations[0].ns, 'tool-group')
 assert.equal(localeRegistrations[0].dicts.zh.running, '正在运行')
 assert.equal(localeRegistrations[0].dicts.en.running, 'Running')
+assert.equal(localeRegistrations[0].dicts.zh.expand, '展开')
+assert.equal(localeRegistrations[0].dicts.en.expand, 'Expand')
 
 // Overlay restore path (what unload does).
 realSlots.SlotCore.prototype.register = realRegister

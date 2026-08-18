@@ -26,12 +26,15 @@
 import * as React from 'react'
 import {
   DisclosureRow,
+  IconApiOutline14,
   IconChevronDownOutline14,
   IconChevronRightOutline14,
+  IconQuestionOutline14,
   IconThinkOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
+import { runningToolRow } from './tool-row'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
@@ -280,11 +283,51 @@ export interface GroupBarProps {
   onToggle: () => void
   onKeyDown: (event: React.KeyboardEvent) => void
   t: (key: string, params?: Record<string, unknown>) => string
+  /** Session workspace root (only the tool-call seat provides it). */
+  cwd?: string
 }
 
-/** The one-line folded bar: [running tool name?] [N 个块已被折叠] [chevron]. */
-export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle, onKeyDown, t }: GroupBarProps): React.ReactElement {
-  const runningName = isRunningBlock(group.running) ? group.running.name : null
+/**
+ * The live content of the folded bar: the product's collapsed row for the
+ * running item — a streaming Think row (`[icon] Think · <latest line>`) or a
+ * working tool call (`[icon] <Title> · <summary>`), exactly as the product's
+ * own ReasoningRow / ToolRow would render it collapsed. The visually hidden
+ * running label keeps AT parity with the product rows.
+ */
+const LiveRow = React.memo(function LiveRow({ item, cwd, t }: { item: GroupItem; cwd?: string; t: GroupBarProps['t'] }): React.ReactElement {
+  let icon: React.ReactElement
+  let title: string
+  let summary: string
+  if (item.kind === 'think') {
+    const blocks = item.node.data?.blocks ?? []
+    const reasoning = blocks.filter((block) => block.kind === 'reasoning' && (block.text ?? '').trim() !== '')
+    const text = reasoning.length > 0 ? reasoning[reasoning.length - 1].text ?? '' : ''
+    icon = React.createElement(IconThinkOutline14, { size: 14 })
+    title = 'Think'
+    summary = latestLine(text)
+  } else {
+    const block = item.node.data?.root
+    const name = block === undefined ? '' : callName(block)
+    const row = runningToolRow(name, block ?? ({ callId: item.key, name } as ToolBlockLike), cwd)
+    icon = React.createElement(name === 'ask_user_question' ? IconQuestionOutline14 : IconApiOutline14, { size: 14 })
+    title = row.title
+    summary = row.summary
+  }
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement('span', { className: 'dshToolGroupVisuallyHidden' }, t('running')),
+    React.createElement('span', { className: 'dshToolGroupLiveIcon' }, icon),
+    React.createElement('span', { className: 'dshToolGroupLiveTitle' }, title),
+    React.createElement('span', { className: 'dshToolGroupLiveSep', 'aria-hidden': true }),
+    React.createElement('span', { className: 'dshToolGroupLiveSummary' }, summary),
+  )
+})
+
+/** The one-line folded bar: [live running block?] [N 个块已被折叠] [chevron]. */
+export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle, onKeyDown, t, cwd }: GroupBarProps): React.ReactElement {
+  const runningItem = group.runningItem
+  const live = runningItem === undefined ? null : React.createElement(LiveRow, { item: runningItem, cwd, t })
   const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
     className: 'dshToolGroupChevron',
   })
@@ -298,14 +341,9 @@ export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle
       'aria-label': t('folded', { count: group.count }),
       onClick: onToggle,
       onKeyDown,
+      'data-state': runningItem === undefined ? 'settled' : 'running',
     },
-    React.createElement(
-      'div',
-      { className: 'dshToolGroupLeft' },
-      runningName !== null
-        ? [React.createElement('span', { key: 'running', className: 'dshToolGroupRunning' }, t('running')), React.createElement('span', { key: 'name', className: 'dshToolGroupName' }, runningName)]
-        : null,
-    ),
+    React.createElement('div', { className: 'dshToolGroupLeft' }, live),
     React.createElement(
       'div',
       { className: 'dshToolGroupRight' },
@@ -394,12 +432,10 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
     return React.createElement(FoldedSeat, null)
   }
 
-  const runningName = isRunningBlock(group.running) ? group.running.name : null
-
   const small = React.createElement(
     'div',
-    { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': runningName !== null ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
-    React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
+    { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': group.runningItem === undefined ? 'settled' : 'running' } as unknown as React.HTMLAttributes<HTMLDivElement>,
+    React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd }),
     expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
   )
 
