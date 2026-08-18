@@ -35,3 +35,18 @@ export function officialNodeEntry(key: string): NodeEntryLike | undefined {
   const all = service.entries('conversation.chat.node')
   return all.find((entry) => entry.options.key === key && (entry.options.priority ?? 0) === 0)
 }
+
+export type TranslateLike = (key: string, params?: Record<string, unknown>) => string
+
+/** Conversation-namespace translate (set by the conversation-locale seats;
+ * used to render group members that need product keys, e.g. the official
+ * model-retry row). */
+let conversationT: TranslateLike | undefined
+
+export function setConversationT(t: TranslateLike | undefined): void {
+  conversationT = t
+}
+
+export function getConversationT(): TranslateLike | undefined {
+  return conversationT
+}

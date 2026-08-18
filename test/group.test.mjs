@@ -4,7 +4,7 @@
  * transparency rule.
  */
 import assert from 'node:assert/strict'
-import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant, latestActiveNode } from '../lib/client-group.mjs'
+import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant, latestWorkNode } from '../lib/client-group.mjs'
 
 /** Build a snapshot node. */
 function toolNode(key, turn, root) {
@@ -240,6 +240,35 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
+// model-retry joins the group: a retry notice between tools does NOT split
+// the chain — one group, count includes the retry, order preserved.
+// ---------------------------------------------------------------------------
+{
+  const retry = (key) => ({ key, kind: 'model-retry', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: {} })
+  const s = snapshot(['t1', 'mr1', 't2', 'mr2', 't3'], [toolNode('t1', 1, settled('read')), retry('mr1'), toolNode('t2', 1, settled('grep')), retry('mr2'), toolNode('t3', 1, running('bash'))])
+  const g = groupOf(s, 't1')
+  assert.ok(g && isGroupLeader(g, 't1'), 'tool leader owns the merged group')
+  assert.equal(g.count, 5, 'count includes the retry notices')
+  assert.deepEqual(g.items.map((i) => i.kind), ['tool', 'retry', 'tool', 'retry', 'tool'], 'retries interleaved in order')
+  assert.deepEqual([...g.itemKeys], ['t1', 'mr1', 't2', 'mr2', 't3'])
+  assert.equal(g.runningItem?.kind, 'tool', 'live content still the running tool')
+  assert.equal(g.runningItem?.key, 't3')
+  const byT2 = groupOf(s, 't2')
+  assert.ok(byT2 && byT2.leaderKey === 't1', 'no separate group for the later tool')
+  const byMr = groupOf(s, 'mr1')
+  assert.ok(byMr && byMr.leaderKey === 't1', 'retry member resolves to the same group')
+  assert.equal(isGroupLeader(byMr, 'mr1'), false, 'retry is not the leader')
+}
+
+// A standalone retry (no adjacent tools/thinks) leads its own group.
+{
+  const s = snapshot(['mr1'], [{ key: 'mr1', kind: 'model-retry', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: {} }])
+  const g = groupOf(s, 'mr1')
+  assert.ok(g && isGroupLeader(g, 'mr1'), 'standalone retry leads its own group')
+  assert.equal(g.count, 1)
+}
+
+// ---------------------------------------------------------------------------
 // runningItem: the folded bar's live content.
 // ---------------------------------------------------------------------------
 
@@ -294,26 +323,27 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// latestActiveNode: the conversation's NEWEST active node (running tool or
-// streaming Think) — the folded bar's live content reflects current state.
+// latestWorkNode: the conversation's NEWEST work block (a tool call or a
+// Think row — running OR settled) — the folded bar's left side reflects the
+// AI conversation's latest activity and keeps it after the block finishes.
 // ---------------------------------------------------------------------------
 
-// Newest running tool wins over an earlier running tool.
+// Newest tool wins over an earlier tool, regardless of state.
 {
   const s = snapshot(['t1', 't2'], [toolNode('t1', 1, running('read')), toolNode('t2', 1, running('bash'))])
-  const node = latestActiveNode(s)
-  assert.ok(node, 'an active node exists')
-  assert.equal(node.key, 't2', 'the LATEST running tool wins')
+  const node = latestWorkNode(s)
+  assert.ok(node, 'a work node exists')
+  assert.equal(node.key, 't2', 'the LATEST tool wins')
 }
 
-// A streaming Think row becomes the latest once the tool settled.
+// A (settled or streaming) Think row becomes the latest once the tool settled.
 {
   const s = snapshot(
     ['t1', 'a2'],
     [toolNode('t1', 1, settled('read')), assistantNode('a2', 1, [think('reasoning again')], 'running')],
   )
-  const node = latestActiveNode(s)
-  assert.equal(node?.key, 'a2', 'streaming think is the latest activity')
+  const node = latestWorkNode(s)
+  assert.equal(node?.key, 'a2', 'think row is the latest activity')
 }
 
 // While a tool executes, the running tool is the latest (not its preceding think).
@@ -322,26 +352,56 @@ function snapshot(order, nodes) {
     ['a1', 't1'],
     [assistantNode('a1', 1, [think('thinking then calling')], 'running'), toolNode('t1', 1, running('bash'))],
   )
-  const node = latestActiveNode(s)
+  const node = latestWorkNode(s)
   assert.equal(node?.key, 't1', 'the working call is the latest activity')
 }
 
-// Idle conversation: nothing active -> undefined (bar left side empty).
+// ALL SETTLED (bash just finished): the latest work block STAYS displayed —
+// a completed bash call is still the conversation's latest activity.
 {
   const s = snapshot(
-    ['a1', 't1'],
-    [assistantNode('a1', 1, [think('done')]), toolNode('t1', 1, settled('read'))],
+    ['a1', 't1', 't2'],
+    [assistantNode('a1', 1, [think('done')]), toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('bash'))],
   )
-  assert.equal(latestActiveNode(s), undefined, 'idle -> no live content')
+  const node = latestWorkNode(s)
+  assert.equal(node?.key, 't2', 'finished bash stays as the latest activity')
 }
 
-// User/summary text between groups does not count as activity.
+// Pure text (user + summary) with no tool/think work -> undefined.
 {
   const s = snapshot(
-    ['u1', 't1', 'aSum'],
-    [userNode('u1', 1), toolNode('t1', 1, settled('read')), assistantNode('aSum', 1, [textBlock('总结')])],
+    ['u1', 'aSum'],
+    [userNode('u1', 1), assistantNode('aSum', 1, [textBlock('总结')])],
   )
-  assert.equal(latestActiveNode(s), undefined)
+  assert.equal(latestWorkNode(s), undefined, 'no tool/think work at all')
+}
+
+// NEW TEXT after the last tool: the latest state is the model writing, so
+// the folded bar clears (a stale tool must not keep showing).
+{
+  const s = snapshot(
+    ['t1', 'aSum'],
+    [toolNode('t1', 1, settled('bash')), assistantNode('aSum', 1, [textBlock('新的正文出现')])],
+  )
+  assert.equal(latestWorkNode(s), undefined, 'new text clears the bar')
+}
+
+// A user message after the work clears it too.
+{
+  const s = snapshot(
+    ['t1', 'u1'],
+    [toolNode('t1', 1, settled('bash')), userNode('u1', 1)],
+  )
+  assert.equal(latestWorkNode(s), undefined, 'user message after work clears the bar')
+}
+
+// A streaming text node clears the bar while it streams.
+{
+  const s = snapshot(
+    ['t1', 'aTxt'],
+    [toolNode('t1', 1, settled('bash')), assistantNode('aTxt', 1, [textBlock('正在写正文...')], 'running')],
+  )
+  assert.equal(latestWorkNode(s), undefined, 'streaming text clears the bar')
 }
 
 console.log('group.test: all assertions passed')

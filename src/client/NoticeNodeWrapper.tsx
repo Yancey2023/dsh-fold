@@ -20,12 +20,13 @@
 
 import * as React from 'react'
 import type { ChatNodeLike } from './group'
-import { latestActiveNode } from './group'
-import { GroupBar, TurnFoldBar } from './ToolCallGroupView'
+import { eqGroup, groupOf, isGroupLeader, isRetryNode, latestWorkNode } from './group'
+import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
 import type { ToolGroup } from './group'
 import { AutoLoadHost } from './AutoLoadHost'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
-import { officialNodeEntry } from './registry'
+import { officialNodeEntry, setConversationT } from './registry'
+import type { TranslateLike } from './registry'
 import { getGroupT } from './translate'
 export { setSlotsService } from './registry'
 export { setGroupT } from './translate'
@@ -83,7 +84,8 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
-  const live = useSession((snapshot) => latestActiveNode(snapshot.chat))
+  const retryGroup = useSession((snapshot) => (node.kind === 'model-retry' ? groupOf(snapshot.chat, node.key) : null), eqGroup)
+  const live = useSession((snapshot) => latestWorkNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
@@ -111,11 +113,37 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   )
 
   const t = getGroupT() ?? ((key: string, params?: Record<string, unknown>) => (params && 'count' in params ? String(params.count) : key))
+  setConversationT(((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined)
 
   let output: React.ReactNode
   // Fail-soft: only act on the notice kinds this wrapper owns.
   if (!NOTICE_KINDS.has(node.kind)) {
     output = React.createElement(FoldedSeat, null)
+  } else if (isRetryNode(node) && retryGroup !== null) {
+    // model-retry (已重试模型请求) folds WITH the surrounding work group:
+    // a member seat renders nothing (the group leader's bar owns it); the
+    // leader of a retry/think-only group renders the group bar itself.
+    if (!isGroupLeader(retryGroup, node.key)) {
+      output = React.createElement(FoldedSeat, null)
+    } else {
+      const conversationT = ((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined
+      const groupSmall = React.createElement(
+        'div',
+        { className: 'dshToolGroup', 'data-tool-group': '', 'data-notice': '' } as unknown as React.HTMLAttributes<HTMLDivElement>,
+        React.createElement(GroupBar, { group: retryGroup, expanded, onToggle: toggle, onKeyDown, t, live }),
+        expanded ? React.createElement(GroupItems, { group: retryGroup, t, conversationT }) : null,
+      )
+      const first = node.key === turnInfo?.firstKey
+      if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+        output = turnExpanded
+          ? React.createElement(React.Fragment, null, first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null, groupSmall)
+          : first
+            ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t })
+            : React.createElement(FoldedSeat, null)
+      } else {
+        output = groupSmall
+      }
+    }
   } else {
     const official = officialNodeEntry(node.kind)
     const officialContent = official === undefined || official.component == null ? null : React.createElement(official.component as React.ComponentType<Record<string, unknown>>, props as Record<string, unknown>)

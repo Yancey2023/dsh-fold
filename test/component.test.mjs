@@ -101,14 +101,17 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// Case 3: all settled -> left side empty, count + chevron only.
+// Case 3: all settled -> the LATEST completed block STAYS shown on the left
+// (the conversation's latest activity, not just the running one).
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['t1', 't2', 't3'], [toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('grep')), toolNode('t3', 1, settled('bash'))])
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
-  assert.ok(!text.includes('正在运行'), 'no running label')
-  assert.ok(!text.includes('read') && !text.includes('grep') && !text.includes('bash'), 'no tool names on the collapsed row')
+  assert.ok(!text.includes('正在运行'), 'no running label (visually hidden label only while live-running)')
+  assert.ok(!text.includes('read') && !text.includes('grep'), 'only the LATEST block shows')
+  assert.ok(text.includes('Bash'), 'the finished bash STAYS shown as the latest activity')
+  assert.equal(root.toJSON().props['data-state'], 'settled', 'no sweep once settled')
   assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   root.unmount()
 }
@@ -168,6 +171,28 @@ function childrenOf(node) {
   assert.ok(text.includes('FALLBACK:grep'), 'fallback dispatch for unregistered grep')
   // order preserved: read card before grep card before bash card
   assert.ok(text.indexOf('FALLBACK:read') < text.indexOf('FALLBACK:grep') && text.indexOf('FALLBACK:grep') < text.indexOf('CARD:bash'), 'members in execution order')
+  root.unmount()
+}
+
+// ---------------------------------------------------------------------------
+// A model-retry notice between the tools folds WITH the group: one bar,
+// count includes the retry; the group's live block still shows.
+// ---------------------------------------------------------------------------
+{
+  const retryNode = (key) => ({ key, kind: 'model-retry', location: { kind: 'step', turn: { turn: 1 }, step: { step: 2 } }, data: {} })
+  const snapshot = makeSession(['t1', 'mr1', 't2'], [toolNode('t1', 1, settled('read')), retryNode('mr1'), toolNode('t2', 1, running('bash'))])
+  const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
+  const text = textOf(root.toJSON())
+  assert.ok(text.includes('3 个块已被折叠'), 'retry folded WITH the tool group (count 3)')
+  assert.ok(text.includes('Bash') && text.includes('echo hi'), 'live block still the running bash')
+  // Expanded: the tools render in order (the retry item degrades to nothing
+  // without a live registry in this test harness).
+  act(() => {
+    root.toJSON().children[0].props.onClick()
+  })
+  const expanded = textOf(root.toJSON())
+  assert.ok(expanded.includes('FALLBACK:read') && expanded.includes('CARD:bash:c-bash'), 'official tool cards in order')
+  assert.ok(expanded.indexOf('FALLBACK:read') < expanded.indexOf('CARD:bash:c-bash'))
   root.unmount()
 }
 

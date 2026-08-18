@@ -23,14 +23,15 @@
  */
 
 import * as React from 'react'
-import { eqGroup, groupOf, isGroupLeader, isTransparentAssistant, latestActiveNode } from './group'
+import { eqGroup, groupOf, isGroupLeader, isTransparentAssistant, latestWorkNode } from './group'
 import type { AssistantBlockLike } from './group'
 import type { ChatNodeLike } from './group'
 import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
 import { AutoLoadHost } from './AutoLoadHost'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 import { getGroupT } from './translate'
-import { officialNodeEntry } from './registry'
+import { officialNodeEntry, setConversationT } from './registry'
+import type { TranslateLike } from './registry'
 export { setGroupT } from './translate'
 export { setSlotsService } from './registry'
 
@@ -80,11 +81,14 @@ function FoldedSeat(): React.ReactElement {
 
 export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(props: AssistantNodeWrapperProps): React.ReactElement | null {
   const { node, useSession, sessionId } = props
+  // The assistant seat binds the CONVERSATION namespace; stash it for group
+  // members that render product text (the official model-retry row).
+  setConversationT(((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined)
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => (isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null), eqGroup)
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
-  const live = useSession((snapshot) => latestActiveNode(snapshot.chat))
+  const live = useSession((snapshot) => latestWorkNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
   const [expanded, setExpanded] = React.useState(false)
@@ -120,7 +124,7 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
           React.Fragment,
           null,
           React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live }),
-          expanded ? React.createElement(GroupItems, { group, t }) : null,
+          expanded ? React.createElement(GroupItems, { group, t, conversationT: ((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined }) : null,
         )
       : null
 

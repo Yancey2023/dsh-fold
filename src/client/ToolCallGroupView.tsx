@@ -32,10 +32,11 @@ import {
   IconQuestionOutline14,
   IconThinkOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { callName, eqGroup, groupOf, isGroupLeader, isRunningBlock, isTransparentAssistant, latestActiveNode } from './group'
+import { callName, eqGroup, groupOf, isGroupLeader, isLiveWorkNode, isRunningBlock, isTransparentAssistant, latestWorkNode } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
 import { runningToolRow } from './tool-row'
 import { AutoLoadHost } from './AutoLoadHost'
+import { getConversationT, officialNodeEntry } from './registry'
 import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
@@ -320,13 +321,16 @@ const LiveRow = React.memo(function LiveRow({ node, cwd, t }: { node: ChatNodeLi
   // a negative position narrows the else branch to `never` — annotate the
   // alias as plain boolean so `node` keeps its type in both branches.
   const think: boolean = isTransparentAssistant(node)
+  const running = isLiveWorkNode(node)
   if (think) {
     const blocks = node.data?.blocks ?? []
     const reasoning = blocks.filter((block) => block.kind === 'reasoning' && (block.text ?? '').trim() !== '')
     const text = reasoning.length > 0 ? reasoning[reasoning.length - 1].text ?? '' : ''
     icon = React.createElement(IconThinkOutline14, { size: 14 })
     title = 'Think'
-    summary = latestLine(text)
+    // Product ReasoningRow behavior: streaming shows the latest line, a
+    // settled think its first (summary) line.
+    summary = running ? latestLine(text) : firstLine(text)
   } else {
     const block = node.data?.root
     const name = block === undefined ? '' : callName(block)
@@ -338,7 +342,7 @@ const LiveRow = React.memo(function LiveRow({ node, cwd, t }: { node: ChatNodeLi
   return React.createElement(
     React.Fragment,
     null,
-    React.createElement('span', { className: 'dshToolGroupVisuallyHidden' }, t('running')),
+    running ? React.createElement('span', { className: 'dshToolGroupVisuallyHidden' }, t('running')) : null,
     React.createElement('span', { className: 'dshToolGroupLiveIcon' }, icon),
     React.createElement('span', { className: 'dshToolGroupLiveTitle' }, title),
     React.createElement('span', { className: 'dshToolGroupLiveSep', 'aria-hidden': true }),
@@ -355,6 +359,7 @@ export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle
   //  - it shows ONLY while the group is collapsed (expanded, the details are
   //    right below, so the bar's left goes empty).
   const liveShown = live !== undefined && !expanded && group.itemKeys.includes(live.key)
+  const liveRunning = liveShown && isLiveWorkNode(live)
   const liveNode = liveShown ? React.createElement(LiveRow, { node: live, cwd, t }) : null
   const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
     className: 'dshToolGroupChevron',
@@ -369,7 +374,7 @@ export const GroupBar = React.memo(function GroupBar({ group, expanded, onToggle
       'aria-label': t('folded', { count: group.count }),
       onClick: onToggle,
       onKeyDown,
-      'data-state': liveShown ? 'running' : 'settled',
+      'data-state': liveRunning ? 'running' : 'settled',
     },
     React.createElement('div', { className: 'dshToolGroupLeft' }, liveNode),
     React.createElement(
@@ -389,17 +394,31 @@ export interface GroupItemsProps {
   cwd?: string
   openFile?: (path: string) => void
   inspectCall?: (callId: string) => void
+  /** Conversation-namespace translate (the official model-retry row needs it). */
+  conversationT?: (key: string, params?: Record<string, unknown>) => string
 }
 
-/** Expanded contents: think rows and official tool cards in execution order. */
+/** One folded model-retry notice: the OFFICIAL retry row via the live
+ * registry (same path every other delegated cell uses). */
+const RetryItem = React.memo(function RetryItem({ item, conversationT }: { item: GroupItem & { kind: 'retry' }; conversationT?: GroupItemsProps['conversationT'] }): React.ReactElement | null {
+  const official = officialNodeEntry('model-retry')
+  const t = conversationT ?? getConversationT()
+  if (official === undefined || official.component == null || t === undefined) return null
+  return React.createElement(official.component as React.ComponentType<Record<string, unknown>>, { node: item.node, t })
+})
+
+/** Expanded contents: think rows, model-retry notices and official tool cards in execution order. */
 export const GroupItems = React.memo(function GroupItems(props: GroupItemsProps): React.ReactElement {
-  const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall } = props
+  const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT } = props
   return React.createElement(
     'div',
     { className: 'dshToolGroupItems' },
     group.items.map((item) => {
       if (item.kind === 'think') {
         return React.createElement(ThinkItem, { key: item.key, item, t })
+      }
+      if (item.kind === 'retry') {
+        return React.createElement(RetryItem, { key: item.key, item, conversationT })
       }
       const root = item.node.data?.root
       if (root === undefined || renderSlot === undefined || openFile === undefined || inspectCall === undefined) return null
@@ -430,9 +449,10 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   // crashes with "Rendered fewer hooks than expected").
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
-  const live = useSession((snapshot) => latestActiveNode(snapshot.chat))
+  const live = useSession((snapshot) => latestWorkNode(snapshot.chat))
   const hasMore = useSession((snapshot) => snapshot.hasMore === true)
   const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
+  const conversationT = getConversationT()
   const [expanded, setExpanded] = React.useState(false)
   const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
@@ -465,9 +485,9 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   } else {
     const small = React.createElement(
       'div',
-      { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': live !== undefined && group.itemKeys.includes(live.key) && !expanded ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
+      { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': live !== undefined && !expanded && group.itemKeys.includes(live.key) && isLiveWorkNode(live) ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
       React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
-      expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null,
+      expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT }) : null,
     )
 
     if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {

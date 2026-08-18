@@ -15,6 +15,12 @@ import { NoticeNodeWrapper, setSlotsService, setGroupT, setTurnExpanded } from '
 function noticeNode(key, kind, turn) {
   return { key, kind, location: { kind: 'turn', turn: { turn } }, data: {} }
 }
+function toolNode(key, turn, root) {
+  return { key, kind: 'tool-call', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { root } }
+}
+function settled(name) {
+  return { kind: 'tool-result', callId: `c-${name}`, call: { name, argsRaw: '{}' }, content: [], isError: false }
+}
 function textAssistant(key, turn) {
   return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { blocks: [{ kind: 'text', text: '总结' }], status: 'settled' } }
 }
@@ -157,8 +163,25 @@ setSlotsService({
 }
 
 // ---------------------------------------------------------------------------
-// model-retry (已重试模型请求): an open-turn retry notice folds into its own
-// bar; expanding shows the official retry view.
+// model-retry (已重试模型请求): between tools it folds WITH the group — its
+// own seat renders the hidden marker (the tool leader's bar owns it).
+// ---------------------------------------------------------------------------
+{
+  const snapshot = makeSession(
+    ['t1', 'mr1', 't2'],
+    [toolNode('t1', 1, settled('read')), noticeNode('mr1', 'model-retry', 1), toolNode('t2', 1, settled('grep'))],
+  )
+  let root
+  await act(async () => {
+    root = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'mr1')))
+  })
+  const json = root.toJSON()
+  assert.ok(json.props['data-tool-group-hidden'] !== undefined, 'retry member hidden (folded with the surrounding group)')
+  root.unmount()
+}
+
+// A standalone retry leads its own group bar; expanding shows the official
+// retry view folded with the group items.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['mr1'], [noticeNode('mr1', 'model-retry', 1)])

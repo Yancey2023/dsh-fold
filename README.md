@@ -25,7 +25,10 @@ official primitives).
   (`snapshot.chat.order`) and belong to the same turn form one group.
   Assistant-step nodes whose blocks contain ONLY reasoning (Think rows) are
   TRANSPARENT: they neither split chains, but fold WITH the group (hidden
-  while collapsed, re-shown between the calls when expanded). Think rows
+  while collapsed, re-shown between the calls when expanded). Model-retry
+  notices (已重试模型请求) are transparent the same way — they never split a
+  chain into separate bars; the retry row folds in with the work it
+  interrupted and counts toward the group's block count. Think rows
   with NO adjacent tools fold into their OWN bar (think-only group). The
   reasoning part of a text-bearing node is folded away too — **only text
   stays visible**. Only real assistant TEXT (and user/steering messages,

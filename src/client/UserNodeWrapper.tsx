@@ -36,6 +36,7 @@ import type { MessageImageLabels } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { getGroupT } from './translate'
 import { AutoLoadHost } from './AutoLoadHost'
+import { setConversationT } from './registry'
 
 export interface UserNodeWrapperProps {
   /** The user node owned by this seat. */
@@ -168,6 +169,8 @@ function CopyAction({ text, t }: { text: string; t: Translate }): React.ReactEle
 /** The user seat: product bubble replica + 3-line clamp + fold toggle. */
 export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNodeWrapperProps): React.ReactElement | null {
   const { node, loadImage, t, sessionId, useSession } = props
+  // The user seat binds the CONVERSATION namespace (product keys).
+  setConversationT(typeof t === 'function' ? t : undefined)
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const [expanded, setExpanded] = React.useState(false)

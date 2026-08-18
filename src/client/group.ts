@@ -87,10 +87,13 @@ export interface GroupSnapshotLike {
   readonly nodes: { get(key: string): ChatNodeLike | undefined }
 }
 
-/** One folded item of a group: a top-level tool call or a transparent think row. */
+/** One folded item of a group: a top-level tool call, a transparent think
+ * row, or a model-retry notice (已重试模型请求) folded in with the work it
+ * interrupted. */
 export type GroupItem =
   | { readonly kind: 'tool'; readonly key: string; readonly node: ChatNodeLike }
   | { readonly kind: 'think'; readonly key: string; readonly node: ChatNodeLike }
+  | { readonly kind: 'retry'; readonly key: string; readonly node: ChatNodeLike }
 
 export interface ToolGroup {
   /** Key of the first TOOL member; only that seat renders the group row. */
@@ -130,6 +133,11 @@ function sameTurn(left: ChatNodeLike, right: ChatNodeLike): boolean {
   return tl === turnOf(right)
 }
 
+/** A model-retry notice node. */
+export function isRetryNode(node: ChatNodeLike | undefined): boolean {
+  return node !== undefined && node.kind === 'model-retry'
+}
+
 /**
  * Whether an assistant node is group-transparent: its blocks contain only
  * reasoning (foldable Think rows) and tool-call placeholders / empty text —
@@ -152,26 +160,33 @@ export function isRunningBlock(block: ToolBlockLike | undefined): block is Runni
 }
 
 /**
- * The conversation's LATEST active node — the newest thing currently
- * "working" anywhere in the flow: a still-running tool call, or a still-
- * streaming Think row (assistant node in `running` state). Scan from the end
- * of the order so the newest activity wins: while a call executes the call is
- * the latest work; once it settles and the model reasons again, the Think
- * row becomes the latest. undefined when nothing is active — the folded
- * bar's left side stays empty (the conversation is idle).
+ * The conversation's LATEST WORK node — what the folded bar's left side
+ * reflects as the AI conversation's latest running state. The NEWEST node in
+ * the flow decides:
+ *  - a tool call or a Think row (running/streaming OR settled): it is shown
+ *    (a finished bash call stays displayed until newer work takes over);
+ *  - ANY other node — new assistant TEXT, a user message, a steering row, a
+ *    notice, a turn tail — means the latest state is not a foldable work
+ *    block (the model is writing, or the user just spoke): the folded bar
+ *    clears instead of showing stale tool content.
  */
-export function latestActiveNode(snapshot: GroupSnapshotLike): ChatNodeLike | undefined {
+export function latestWorkNode(snapshot: GroupSnapshotLike): ChatNodeLike | undefined {
   const order = snapshot.order
   for (let i = order.length - 1; i >= 0; i -= 1) {
     const node = snapshot.nodes.get(order[i])
     if (node === undefined) continue
-    if (node.kind === TOOL_KIND) {
-      if (isRunningBlock(node.data?.root)) return node
-      continue
-    }
-    if (isTransparentAssistant(node) && node.data?.status === 'running') return node
+    if (node.kind === TOOL_KIND || isTransparentAssistant(node)) return node
+    return undefined
   }
   return undefined
+}
+
+/** Whether a work node is still running/streaming (as opposed to settled):
+ * a tool call without a result, or an assistant step in `running` state. */
+export function isLiveWorkNode(node: ChatNodeLike | undefined): boolean {
+  if (node === undefined) return false
+  if (node.kind === TOOL_KIND) return isRunningBlock(node.data?.root)
+  return node.data?.status === 'running'
 }
 
 /** Wire tool name from either lifecycle form. */
@@ -179,10 +194,12 @@ export function callName(block: ToolBlockLike): string {
   return 'kind' in block ? block.call?.name ?? '' : block.name
 }
 
-/** A node continues the current run (same turn): a tool call or a transparent think row. */
+/** A node continues the current run (same turn): a tool call, a transparent
+ * think row, or a model-retry notice (folded in with the work it
+ * interrupted — it never splits a chain into separate bars). */
 function continuesRun(node: ChatNodeLike, anchor: ChatNodeLike): boolean {
   if (!sameTurn(node, anchor)) return false
-  return node.kind === TOOL_KIND || isTransparentAssistant(node)
+  return node.kind === TOOL_KIND || isTransparentAssistant(node) || isRetryNode(node)
 }
 
 /**
@@ -198,7 +215,7 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   const idx = order.indexOf(nodeKey)
   if (idx < 0) return null
   const node = snapshot.nodes.get(nodeKey)
-  if (node === undefined || (node.kind !== TOOL_KIND && !isTransparentAssistant(node))) return null
+  if (node === undefined || (node.kind !== TOOL_KIND && !isTransparentAssistant(node) && !isRetryNode(node))) return null
   let start = idx
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1])
@@ -220,8 +237,10 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
     if (member.kind === TOOL_KIND) {
       if (firstToolKey === undefined) firstToolKey = key
       items.push({ kind: 'tool', key, node: member })
-    } else {
+    } else if (isTransparentAssistant(member)) {
       items.push({ kind: 'think', key, node: member })
+    } else if (isRetryNode(member)) {
+      items.push({ kind: 'retry', key, node: member })
     }
   }
   // Leader: the first TOOL when the run has tools (its seat owns the bar),

@@ -216,7 +216,8 @@ const render = renderer(core, session, dicts)
   const r3 = create(renderer(core, standaloneSession, dicts)('conversation.chat.node', assistantEntry, { node: standaloneSession.chat.nodes.get('a1') }))
   const r3Text = textOf(r3.toJSON())
   assert.ok(r3Text.includes('1 个块已被折叠'), 'standalone think row folds into a bar')
-  assert.ok(!r3Text.includes('standalone'), 'think text hidden while collapsed')
+  // The settled think is the latest activity, so its bar shows it.
+  assert.ok(r3Text.includes('Think') && r3Text.includes('standalone'), 'settled think stays as the latest activity')
   r3.unmount()
 }
 
