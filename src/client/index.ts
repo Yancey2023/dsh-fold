@@ -1,5 +1,5 @@
 /**
- * dsh-tool-group — CLIENT half (browser).
+ * dsh-fold — CLIENT half (browser).
  *
  * Mounts tool-call chain folding into the Conversation UI through the
  * official slot system only:
@@ -15,7 +15,7 @@
  *      assistant nodes that sit inside a tool run are folded with the group
  *      (hidden); everything else delegates to the official entry from the
  *      live registry.
- *   4. Registers the `tool-group` locale dictionaries (running label).
+ *   4. Registers the `fold` locale dictionaries (running label).
  *   5. Injects the package stylesheet (data-plugin tagged, removed on
  *      dispose).
  *
@@ -41,7 +41,7 @@ const DICTS: Record<'zh' | 'en', Record<string, string>> = {
   en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded', turnFolded: 'Turn work process folded', expand: 'Expand', collapse: 'Collapse' },
 }
 
-export const name = 'tool-group'
+export const name = 'fold'
 export const inject = ['slots', 'locale', 'sessions']
 
 type LocaleFace = {
@@ -65,21 +65,21 @@ export function apply(ctx: {
 
   // 1. Shared-declaration overlay (restored automatically on unload).
   const restoreOverlay = installSlotCoreOverlay(SlotCore)
-  ctx.effect(() => restoreOverlay, 'dsh-tool-group: slot-core overlay')
+  ctx.effect(() => restoreOverlay, 'dsh-fold: slot-core overlay')
 
   // 1b. The assistant wrapper reaches the official entry through the registry,
-  //     and binds its own tool-group translate for think-only folded bars.
+  //     and binds its own fold translate for think-only folded bars.
   setSlotsService(slots)
-  setGroupT(locale.bind('tool-group'))
+  setGroupT(locale.bind('fold'))
   // 1c. The sessions service powers scroll-to-top auto-load-older (the
   //     official loadOlder action is reached through the session scope).
   setSessionsService(ctx.get('sessions') as { scope(id: string): { get(name: string): unknown } | undefined } | undefined)
 
   // 2. Locale dictionaries.
-  ctx.effect(() => locale.register('tool-group', DICTS), 'dsh-tool-group: dictionaries')
+  ctx.effect(() => locale.register('fold', DICTS), 'dsh-fold: dictionaries')
 
   // 3. Stylesheet.
-  ctx.effect(() => insertStyle(document), 'dsh-tool-group: styles')
+  ctx.effect(() => insertStyle(document), 'dsh-fold: styles')
 
   // 4. Shadow the official tool-call renderer with the group view.
   ctx.effect(
@@ -89,14 +89,14 @@ export function apply(ctx: {
           name: 'conversation.chat.node',
           key: 'tool-call',
           priority: -100,
-          locale: 'tool-group',
+          locale: 'fold',
           children: {
             'tool.call.toolview': { kind: 'keyed', scope: 'session' },
           },
         },
         ToolCallGroupView,
       ) as () => void,
-    'dsh-tool-group: tool-call shadow',
+    'dsh-fold: tool-call shadow',
   )
 
   // 5. Shadow the assistant-step cell: reasoning-only nodes fold with the
@@ -113,13 +113,13 @@ export function apply(ctx: {
         },
         AssistantNodeWrapper,
       ) as () => void,
-    'dsh-tool-group: assistant-step shadow',
+    'dsh-fold: assistant-step shadow',
   )
 
   // 6. Shadow the user cell: long user input folds to 3 lines behind a
   //    展开/收起 toggle. Conversation locale (the replica needs product keys
   //    like image.label / copy / clock.md); the toggle labels come from the
-  //    shared tool-group translate.
+  //    shared fold translate.
   ctx.effect(
     () =>
       slots.register(
@@ -131,7 +131,7 @@ export function apply(ctx: {
         },
         UserNodeWrapper,
       ) as () => void,
-    'dsh-tool-group: user shadow',
+    'dsh-fold: user shadow',
   )
 
   // 7. Shadow the non-text cells — automatic compaction, context injection,
@@ -154,7 +154,7 @@ export function apply(ctx: {
           },
           NoticeNodeWrapper,
         ) as () => void,
-      `dsh-tool-group: ${key} shadow`,
+      `dsh-fold: ${key} shadow`,
     )
   }
 }

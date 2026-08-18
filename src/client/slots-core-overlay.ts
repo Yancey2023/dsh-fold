@@ -88,7 +88,7 @@ export function installSlotCoreOverlay(SlotCore: SlotCoreLike): () => void {
   const originalRegister = SlotCore.prototype.register
   const originalRelease = SlotCore.prototype.releaseEntry
   if (typeof originalRegister !== 'function' || typeof originalRelease !== 'function') {
-    throw new Error('dsh-tool-group: SlotCore.register/releaseEntry are not functions; refusing to install the overlay (plugin stays inert)')
+    throw new Error('dsh-fold: SlotCore.register/releaseEntry are not functions; refusing to install the overlay (plugin stays inert)')
   }
 
   /** child slot key -> Set<entry> of co-owners (side table; records stay pristine). */
@@ -129,7 +129,7 @@ export function installSlotCoreOverlay(SlotCore: SlotCoreLike): () => void {
     if (created === undefined) {
       // Fail closed: undo and refuse (plugin fiber teardown disposes the half registration).
       dispose()
-      throw new Error('dsh-tool-group: could not locate the entry created by SlotCore.register; refusing the shadow (official UI keeps rendering)')
+      throw new Error('dsh-fold: could not locate the entry created by SlotCore.register; refusing the shadow (official UI keeps rendering)')
     }
     const entry = created as EntryLike
     // Restore render authorization for the co-declared child slots.

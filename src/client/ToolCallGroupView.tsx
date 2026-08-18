@@ -77,7 +77,7 @@ export interface ToolCallGroupViewProps {
   cwd?: string
   openFile: (path: string) => void
   inspectCall: (callId: string) => void
-  /** Namespace-bound translate (`locale: 'tool-group'`). */
+  /** Namespace-bound translate (`locale: 'fold'`). */
   t: (key: string, params?: Record<string, unknown>) => string
   /** Session id (big-fold state is keyed per session). */
   sessionId?: string

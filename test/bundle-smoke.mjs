@@ -41,7 +41,7 @@ let registeredPlugin = null
 globalThis.window = {
   __ModuleLoader__: {
     load(entry) {
-      assert.equal(entry.id, 'dsh-tool-group')
+      assert.equal(entry.id, 'dsh-fold')
       const requireFn = (spec) => {
         if (!(spec in moduleTable)) throw new Error(`smoke: unexpected require("${spec}")`)
         return moduleTable[spec]
@@ -56,7 +56,7 @@ globalThis.window = {
 await import(new URL('../lib/client.js', import.meta.url).href + '?smoke=' + Date.now())
 
 assert.ok(registeredPlugin, 'bundle must register via __ModuleLoader__.load')
-assert.equal(registeredPlugin.name, 'tool-group')
+assert.equal(registeredPlugin.name, 'fold')
 assert.deepEqual(registeredPlugin.inject, ['slots', 'locale', 'sessions'])
 assert.equal(typeof registeredPlugin.apply, 'function')
 
@@ -131,7 +131,7 @@ assert.equal(options.name, 'conversation.chat.node')
 assert.equal(options.key, 'tool-call')
 assert.equal(options.priority, -100)
 assert.deepEqual(options.children, { 'tool.call.toolview': { kind: 'keyed', scope: 'session' } })
-assert.equal(options.locale, 'tool-group')
+assert.equal(options.locale, 'fold')
 assert.ok(typeof component === 'function' || (typeof component === 'object' && component !== null), 'registered component is the memoized group view')
 
 const aOptions = assistantEntry.options
@@ -155,7 +155,7 @@ assert.equal(compactionEntry.options.children, undefined, 'notice seats without 
 assert.equal(compactionEntry.options.locale, 'conversation')
 
 assert.equal(localeRegistrations.length, 1)
-assert.equal(localeRegistrations[0].ns, 'tool-group')
+assert.equal(localeRegistrations[0].ns, 'fold')
 assert.equal(localeRegistrations[0].dicts.zh.running, '正在运行')
 assert.equal(localeRegistrations[0].dicts.en.running, 'Running')
 assert.equal(localeRegistrations[0].dicts.zh.expand, '展开')

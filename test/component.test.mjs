@@ -5,7 +5,7 @@
  * useSession/renderSlot/t are injected as fakes (they are props of the
  * registered component in the real page): useSession computes the group from
  * a mutable snapshot, renderSlot returns marker text for tool.call.toolview
- * dispatches, and t resolves the tool-group dictionary.
+ * dispatches, and t resolves the fold dictionary.
  */
 import assert from 'node:assert/strict'
 import React from 'react'

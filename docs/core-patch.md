@@ -17,10 +17,10 @@ A shadowing entry therefore cannot obtain a `renderSlot` binding for the
 official `tool.call.toolview` slot, and naive re-declaration would break the
 product's tool views on unload. This patch makes child-slot declarations
 SHARED when the incoming spec is structurally identical to the live one, so
-"shadow and delegate" renderers (like dsh-tool-group) become possible
+"shadow and delegate" renderers (like dsh-fold) become possible
 without any other core change.
 
-`dsh-tool-group` ships this exact change as a *reversible runtime overlay*
+`dsh-fold` ships this exact change as a *reversible runtime overlay*
 (`src/client/slots-core-overlay.ts`) so the plugin works on unmodified
 installs. The overlay is a thin wrapper around the live methods (no
 method-text dependency — the shipped web bundle is minified, so text

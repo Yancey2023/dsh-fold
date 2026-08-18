@@ -1,5 +1,5 @@
 {
-  "name": "dsh-tool-group",
+  "name": "dsh-fold",
   "version": "0.1.0",
   "description": "DSH Web UI plugin: fold consecutive tool calls in one assistant turn into a single line (Codex-style), with live running-tool label, call count, and expand/collapse. Pure Slot/React implementation, no DOM patching.",
   "type": "module",

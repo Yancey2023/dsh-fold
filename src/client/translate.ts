@@ -1,11 +1,11 @@
 /**
- * Shared tool-group namespace translate.
+ * Shared fold namespace translate.
  *
  * The plugin registers three `conversation.chat.node` seats with two
  * different locales: `tool-call` and `user`-adjacent rows bind the
- * tool-group namespace, but the `user` seat binds the CONVERSATION namespace
+ * fold namespace, but the `user` seat binds the CONVERSATION namespace
  * (it needs product keys like `image.label` / `copy` / `clock.md`). The
- * tool-group strings (running / folded / turnFolded / expand / collapse) are
+ * fold strings (running / folded / turnFolded / expand / collapse) are
  * therefore shared through this tiny module slot, set once by the plugin
  * entry and read by every seat.
  */

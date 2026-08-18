@@ -1,4 +1,4 @@
-# dsh-tool-group
+# dsh-fold
 
 把 DeepSeek Harness（DSH）Web GUI 中**同一个 assistant turn 内连续的工具调用**折叠成一行（Codex 风格）：实时显示"正在运行"的工具名、累计调用数，支持展开/折叠。**过长的用户输入折叠为 3 行**，带独立的 展开/收起 按钮。
 
@@ -54,19 +54,19 @@ ChatView (conversation.view)
 ```bash
 pnpm install && pnpm build
 # 方式 A —— 官方插件 CLI：
-dsh plugin --profile web add /绝对路径/dsh-tool-group
+dsh plugin --profile web add /绝对路径/dsh-fold
 # 方式 B —— 辅助脚本（等价）：
 pnpm run install:dsh            # DSH_PROFILE 默认 web
 # 重启 web：
 dsh --profile web
 ```
 
-GitHub 安装：`dsh plugin --profile web add github:you/dsh-tool-group`。
+GitHub 安装：`dsh plugin --profile web add github:you/dsh-fold`。
 
 ## 卸载
 
 ```bash
-dsh plugin --profile web remove dsh-tool-group
+dsh plugin --profile web remove dsh-fold
 # 或：pnpm run uninstall:dsh
 # 重启 web 后官方工具 UI 立即恢复。
 ```
@@ -129,7 +129,7 @@ src/client/AssistantNodeWrapper.tsx assistant-step 阴影（委托官方）
 src/client/UserNodeWrapper.tsx   用户气泡复刻 + 3 行钳制 + 展开/收起
 src/client/NoticeNodeWrapper.tsx compaction/context/manual-compaction/command 阴影
 src/client/registry.ts           委托用的共享实时注册表访问
-src/client/translate.ts          共享 tool-group 翻译槽
+src/client/translate.ts          共享 fold 翻译槽
 src/client/slots-core-overlay.ts 可逆 SlotCore overlay（对应 docs/core-patch.md）
 src/client/styles.ts             主题变量 CSS
 src/client/vendor.d.ts           DSH 页面包的最小 ambient 类型

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dsh-tool-group installer for the DSH web profile.
+ * dsh-fold installer for the DSH web profile.
  *
  *   node scripts/install-dsh.cjs            install (pnpm add into the profile + reconcile bundles)
  *   node scripts/install-dsh.cjs uninstall  remove
@@ -10,7 +10,7 @@
  * bundle patch layer from package.json's `dsh.bundle.patch`.
  *
  * Usage with a local checkout:
- *   node scripts/install-dsh.cjs --local /absolute/path/to/dsh-tool-group
+ *   node scripts/install-dsh.cjs --local /absolute/path/to/dsh-fold
  */
 import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -19,7 +19,7 @@ import { join } from 'node:path'
 
 const PROFILE = process.env.DSH_PROFILE ?? 'web'
 const PROFILE_DIR = join(homedir(), '.dsh', 'profiles', PROFILE)
-const PACKAGE = 'dsh-tool-group'
+const PACKAGE = 'dsh-fold'
 
 function run(cmd) {
   console.log('>', cmd)

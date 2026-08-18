@@ -97,7 +97,7 @@ const shadowDispose = core.register(
     name: 'conversation.chat.node',
     key: 'tool-call',
     priority: -100,
-    locale: 'tool-group',
+    locale: 'fold',
     children: { 'tool.call.toolview': { kind: 'keyed', scope: 'session' } },
   },
   ToolCallGroupView,

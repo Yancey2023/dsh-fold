@@ -1,5 +1,5 @@
 /**
- * dsh-tool-group — HOST half.
+ * dsh-fold — HOST half.
  *
  * Deliberately minimal: all functionality lives in the browser half
  * (`src/client`). This row exists only as the bundle anchor so the profile
@@ -7,7 +7,7 @@
  * `dsh.client.platform: "web"` manifest.
  */
 
-export const name = 'tool-group'
+export const name = 'fold'
 export const inject: string[] = []
 
 export function apply(_ctx: unknown): void {

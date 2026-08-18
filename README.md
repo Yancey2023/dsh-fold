@@ -1,4 +1,4 @@
-# dsh-tool-group
+# dsh-fold
 
 Fold **consecutive tool calls inside one assistant turn** in the DeepSeek
 Harness (DSH) Web GUI into a single line — Codex-style — with a live
@@ -192,7 +192,7 @@ pnpm install
 pnpm build
 
 # option A — official plugin CLI:
-dsh plugin --profile web add /absolute/path/to/dsh-tool-group
+dsh plugin --profile web add /absolute/path/to/dsh-fold
 
 # option B — helper script (equivalent):
 pnpm run install:dsh          # uses DSH_PROFILE (default: web)
@@ -202,16 +202,16 @@ dsh --profile web
 ```
 
 `dsh plugin … add` sees the package's `dsh.bundle.patch` declaration and
-appends `dsh-tool-group` to the profile bundle stack; the client loader
+appends `dsh-fold` to the profile bundle stack; the client loader
 picks up the `dsh.client.platform: "web"` manifest and serves
 `exports["./client"]` to the page. The host row is a minimal anchor only.
 
-For a GitHub install: `dsh plugin --profile web add github:you/dsh-tool-group`.
+For a GitHub install: `dsh plugin --profile web add github:you/dsh-fold`.
 
 ## Uninstall
 
 ```bash
-dsh plugin --profile web remove dsh-tool-group
+dsh plugin --profile web remove dsh-fold
 # or: pnpm run uninstall:dsh
 # restart the web app — the official tool-call UI renders again immediately.
 ```
@@ -298,7 +298,7 @@ src/client/AssistantNodeWrapper.tsx assistant-step shadow (official delegation)
 src/client/UserNodeWrapper.tsx    user bubble replica + 3-line clamp + toggle
 src/client/NoticeNodeWrapper.tsx  compaction/context/manual-compaction/command shadow
 src/client/registry.ts            shared live-registry access for delegation
-src/client/translate.ts           shared tool-group translate slot
+src/client/translate.ts           shared fold translate slot
 src/client/slots-core-overlay.ts  reversible SlotCore overlay (docs/core-patch.md)
 src/client/styles.ts              theme-variable CSS
 src/client/vendor.d.ts            minimal ambient types for the DSH page packages

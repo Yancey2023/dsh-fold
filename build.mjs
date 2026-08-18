@@ -1,5 +1,5 @@
 /**
- * dsh-tool-group build: typecheck + bundle both halves.
+ * dsh-fold build: typecheck + bundle both halves.
  *
  * Client half: esbuild bundles `src/client/index.ts` as CommonJS with the
  * DSH page packages external (they resolve at runtime through the page's
@@ -27,7 +27,7 @@ await build({
 })
 
 const LOADER_PREAMBLE = `window.__ModuleLoader__.load({
-  id: 'dsh-tool-group',
+  id: 'dsh-fold',
   factory: function (require) {
     var module = { exports: {} };
     var exports = module.exports;

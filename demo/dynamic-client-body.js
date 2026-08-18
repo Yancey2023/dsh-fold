@@ -49,7 +49,7 @@ module.exports = __toCommonJS(index_exports);
 var import_dsh_client_ui_slots = __dynRequire("@deepseek-ai/dsh-client-ui-slots");
 
 // src/client/AssistantNodeWrapper.tsx
-var React3 = __toESM(__dynRequire("react"), 1);
+var React4 = __toESM(__dynRequire("react"), 1);
 
 // src/client/group.ts
 var TOOL_KIND = "tool-call";
@@ -65,6 +65,9 @@ function sameTurn(left, right) {
   if (tl === void 0) return false;
   return tl === turnOf(right);
 }
+function isRetryNode(node) {
+  return node !== void 0 && node.kind === "model-retry";
+}
 function isTransparentAssistant(node) {
   if (node === void 0 || node.kind !== ASSISTANT_KIND) return false;
   const blocks = node.data?.blocks ?? [];
@@ -77,19 +80,34 @@ function isTransparentAssistant(node) {
 function isRunningBlock(block) {
   return block !== void 0 && !("kind" in block);
 }
+function latestWorkNode(snapshot) {
+  const order = snapshot.order;
+  for (let i = order.length - 1; i >= 0; i -= 1) {
+    const node = snapshot.nodes.get(order[i]);
+    if (node === void 0) continue;
+    if (node.kind === TOOL_KIND || isTransparentAssistant(node)) return node;
+    return void 0;
+  }
+  return void 0;
+}
+function isLiveWorkNode(node) {
+  if (node === void 0) return false;
+  if (node.kind === TOOL_KIND) return isRunningBlock(node.data?.root);
+  return node.data?.status === "running";
+}
 function callName(block) {
   return "kind" in block ? block.call?.name ?? "" : block.name;
 }
 function continuesRun(node, anchor) {
   if (!sameTurn(node, anchor)) return false;
-  return node.kind === TOOL_KIND || isTransparentAssistant(node);
+  return node.kind === TOOL_KIND || isTransparentAssistant(node) || isRetryNode(node);
 }
 function groupOf(snapshot, nodeKey) {
   const order = snapshot.order;
   const idx = order.indexOf(nodeKey);
   if (idx < 0) return null;
   const node = snapshot.nodes.get(nodeKey);
-  if (node === void 0 || node.kind !== TOOL_KIND && !isTransparentAssistant(node)) return null;
+  if (node === void 0 || node.kind !== TOOL_KIND && !isTransparentAssistant(node) && !isRetryNode(node)) return null;
   let start = idx;
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1]);
@@ -111,19 +129,28 @@ function groupOf(snapshot, nodeKey) {
     if (member.kind === TOOL_KIND) {
       if (firstToolKey === void 0) firstToolKey = key;
       items.push({ kind: "tool", key, node: member });
-    } else {
+    } else if (isTransparentAssistant(member)) {
       items.push({ kind: "think", key, node: member });
+    } else if (isRetryNode(member)) {
+      items.push({ kind: "retry", key, node: member });
     }
   }
   const leaderKey = firstToolKey ?? keys[0];
   if (leaderKey === void 0) return null;
   let running;
+  let runningToolItem;
+  let runningThinkItem;
   for (const item of items) {
-    if (item.kind !== "tool") continue;
+    if (item.kind !== "tool") {
+      if (runningThinkItem === void 0 && item.node.data?.status === "running") runningThinkItem = item;
+      continue;
+    }
     const block = item.node.data?.root;
     if (running === void 0 && isRunningBlock(block)) running = block;
+    if (runningToolItem === void 0 && isRunningBlock(block)) runningToolItem = item;
   }
-  return { leaderKey, itemKeys: keys, items, count: items.length, running };
+  const runningItem = runningToolItem ?? runningThinkItem;
+  return { leaderKey, itemKeys: keys, items, count: items.length, running, runningItem };
 }
 function isGroupLeader(group, nodeKey) {
   return group.leaderKey === nodeKey;
@@ -142,14 +169,257 @@ function eqGroup(left, right) {
 }
 
 // src/client/ToolCallGroupView.tsx
-var React2 = __toESM(__dynRequire("react"), 1);
+var React3 = __toESM(__dynRequire("react"), 1);
 var import_dsh_client_ui_primitives = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
 
-// src/client/turn-fold.ts
+// src/client/tool-row.ts
+var VARIANT_TITLES = {
+  search: "Search",
+  read: "Read",
+  bash: "Bash",
+  write: "Write",
+  edit: "Edit",
+  code: "Code",
+  others: "Tool call"
+};
+var TOOL_VARIANTS = {
+  bash: "bash",
+  pwsh: "bash",
+  read: "read",
+  web_fetch: "read",
+  web_search: "search",
+  grep: "search",
+  glob: "search",
+  write: "write",
+  edit: "edit",
+  run_code: "code",
+  cordis_package_inspect: "read",
+  cordis_runtime_inspect: "read",
+  cordis_run: "others",
+  cordis_stop: "others",
+  cordis_undefine: "others"
+};
+var TOOL_TITLES = {
+  cordis_package_inspect: "Inspect",
+  cordis_runtime_inspect: "Inspect",
+  cordis_run: "Run Cordis Plugin",
+  cordis_stop: "Stop Cordis Plugin",
+  cordis_undefine: "Remove Cordis Plugin",
+  pwsh: "Pwsh"
+};
+var SUMMARY_KEYS = {
+  bash: ["description", "command"],
+  read: ["path", "file_path", "url"],
+  search: ["query", "pattern", "url"],
+  write: ["path", "file_path"],
+  edit: ["path", "file_path"],
+  code: ["code"],
+  others: []
+};
+function classifyTool(toolName) {
+  return TOOL_VARIANTS[toolName] ?? "others";
+}
+function parseArgs(argsRaw) {
+  try {
+    return JSON.parse(argsRaw);
+  } catch {
+    return void 0;
+  }
+}
+function pickString(args, keys) {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === "string" && value !== "") return value;
+  }
+  return void 0;
+}
+function firstLine(text) {
+  const nl = text.indexOf("\n");
+  return nl === -1 ? text : text.slice(0, nl);
+}
+function relativizeToCwd(text, cwd) {
+  if (cwd === void 0 || cwd === "") return text;
+  const root = cwd.replace(/[/\\]+$/, "");
+  if (text.startsWith(`${root}/`) || text.startsWith(`${root}\\`)) return text.slice(root.length + 1);
+  return text;
+}
+function deriveSummary(variant, argsRaw) {
+  const parsed = parseArgs(argsRaw);
+  if (typeof parsed !== "object" || parsed === null) return firstLine(argsRaw);
+  const args = parsed;
+  const picked = pickString(args, SUMMARY_KEYS[variant] ?? []);
+  if (picked !== void 0) return firstLine(picked);
+  for (const value of Object.values(args)) {
+    if (typeof value === "string" && value !== "") return firstLine(value);
+  }
+  return firstLine(argsRaw);
+}
+function runningToolRow(toolName, block, cwd) {
+  const variant = classifyTool(toolName);
+  const argsRaw = "kind" in block ? block.call?.argsRaw ?? "" : block.argsRaw ?? "";
+  const base = argsRaw === "" ? block.callId : relativizeToCwd(deriveSummary(variant, argsRaw), cwd);
+  const toolTitle = TOOL_TITLES[toolName];
+  let summary = variant === "others" && toolName !== "" && toolTitle === void 0 ? `${toolName} \xB7 ${base}` : base;
+  if (!("kind" in block)) {
+    const callView = block.callView;
+    if (callView?.card === "terminal" && typeof callView.description === "string" && callView.description !== "") {
+      summary = callView.description;
+    }
+  }
+  return { title: toolTitle ?? VARIANT_TITLES[variant] ?? "Tool call", summary, variant };
+}
+
+// src/client/AutoLoadHost.tsx
 var React = __toESM(__dynRequire("react"), 1);
+
+// src/client/auto-load.ts
+var sessionsService;
+var attachedHosts = /* @__PURE__ */ new Map();
+var inFlight = /* @__PURE__ */ new Set();
+function setSessionsService(service) {
+  sessionsService = service;
+}
+var SCROLL_HOST_SELECTOR = "[data-conversation-scroll]";
+var TOP_THRESHOLD = 4;
+var CONTINUE_DELAY_MS = 250;
+async function fireLoadOlder(sessionId) {
+  const sessions = sessionsService;
+  if (sessions === void 0) return;
+  if (inFlight.has(sessionId)) return;
+  const scope = sessions.scope(sessionId);
+  const conversation = scope === void 0 ? void 0 : scope.get("conversation");
+  if (conversation === void 0 || typeof conversation.loadOlder !== "function") return;
+  inFlight.add(sessionId);
+  try {
+    await conversation.loadOlder();
+  } catch {
+  } finally {
+    inFlight.delete(sessionId);
+  }
+}
+function attachAutoLoad(anchor, sessionId, hasMore, loadingOlder) {
+  const host = anchor === null || anchor === void 0 || typeof anchor.closest !== "function" ? null : anchor.closest(SCROLL_HOST_SELECTOR) ?? null;
+  if (host === null) return () => {
+  };
+  const existing = attachedHosts.get(host);
+  if (existing !== void 0) {
+    existing.sessionId = sessionId;
+    existing.hasMore = hasMore;
+    existing.loadingOlder = loadingOlder;
+    existing.owners += 1;
+    if (existing.continueAfterRefresh && !existing.pumping && host.scrollTop <= TOP_THRESHOLD && existing.hasMore && !existing.loadingOlder) {
+      existing.continueAfterRefresh = false;
+      void pump(existing, host);
+    }
+    return () => {
+      release(host, existing);
+    };
+  }
+  const entry = {
+    sessionId,
+    hasMore,
+    loadingOlder,
+    owners: 1,
+    detached: false,
+    onScroll: null,
+    pumping: false,
+    continueAfterRefresh: false,
+    pendingTimer: null
+  };
+  attachedHosts.set(host, entry);
+  entry.onScroll = () => {
+    if (host.scrollTop <= TOP_THRESHOLD) void pump(entry, host);
+  };
+  host.addEventListener("scroll", entry.onScroll, { passive: true });
+  return () => {
+    release(host, entry);
+  };
+  async function pump(current, target) {
+    if (current.pumping || current.detached) return;
+    if (target.scrollTop > TOP_THRESHOLD) return;
+    if (!current.hasMore || current.loadingOlder) return;
+    current.pumping = true;
+    current.continueAfterRefresh = false;
+    try {
+      await fireLoadOlder(current.sessionId);
+    } finally {
+      current.pumping = false;
+    }
+    if (current.detached) return;
+    current.continueAfterRefresh = target.scrollTop <= TOP_THRESHOLD;
+    if (!current.continueAfterRefresh) return;
+    current.pendingTimer = setTimeout(() => {
+      current.pendingTimer = null;
+      if (current.detached || current.pumping || !current.continueAfterRefresh) return;
+      if (target.scrollTop > TOP_THRESHOLD || !current.hasMore || current.loadingOlder) {
+        current.continueAfterRefresh = false;
+        return;
+      }
+      current.continueAfterRefresh = false;
+      void pump(current, target);
+    }, CONTINUE_DELAY_MS);
+  }
+  function release(target, current) {
+    current.owners -= 1;
+    if (current.owners > 0 || current.detached) return;
+    current.detached = true;
+    if (current.pendingTimer !== null) clearTimeout(current.pendingTimer);
+    current.pendingTimer = null;
+    attachedHosts.delete(target);
+    if (current.onScroll !== null) target.removeEventListener("scroll", current.onScroll);
+  }
+}
+
+// src/client/AutoLoadHost.tsx
+var AutoLoadHost = React.memo(function AutoLoadHost2({ sessionId, hasMore, loadingOlder, children }) {
+  const hostRef = React.useRef(null);
+  React.useEffect(() => {
+    const el = hostRef.current;
+    if (el === null || sessionId === void 0) return;
+    return attachAutoLoad(el, sessionId, hasMore, loadingOlder);
+  }, [sessionId, hasMore, loadingOlder]);
+  if (children === null || children === void 0) return null;
+  if (sessionId === void 0) return children;
+  return React.createElement("div", { ref: hostRef, className: "dshAutoHost", "data-dsh-autoload": "" }, children);
+});
+
+// src/client/registry.ts
+var slotsService;
+function setSlotsService(service) {
+  slotsService = service;
+}
+function officialNodeEntry(key) {
+  const service = slotsService;
+  if (service === void 0) return void 0;
+  const all = service.entries("conversation.chat.node");
+  return all.find((entry) => entry.options.key === key && (entry.options.priority ?? 0) === 0);
+}
+var conversationT;
+function setConversationT(t) {
+  conversationT = t;
+}
+function getConversationT() {
+  return conversationT;
+}
+
+// src/client/turn-fold.ts
+var React2 = __toESM(__dynRequire("react"), 1);
 function isThinkOnly(node) {
   return isTransparentAssistant(node);
 }
+var FOLDABLE_KINDS = /* @__PURE__ */ new Set([
+  "tool-call",
+  "assistant-step",
+  "compaction",
+  "context",
+  "manual-compaction",
+  "command",
+  "model-retry",
+  "turn-error",
+  "turn-max-tokens",
+  "unknown",
+  "workflow-run"
+]);
 function turnProcessOf(session, nodeKey) {
   const node = session.chat.nodes.get(nodeKey);
   if (node === void 0) return null;
@@ -161,7 +431,7 @@ function turnProcessOf(session, nodeKey) {
   for (const key of session.chat.order) {
     const member = session.chat.nodes.get(key);
     if (member === void 0 || turnOf(member) !== turn) continue;
-    if (member.kind === "tool-call" || member.kind === "assistant-step") turnNodes.push(member);
+    if (FOLDABLE_KINDS.has(member.kind)) turnNodes.push(member);
   }
   let summaryKey = null;
   for (let i = turnNodes.length - 1; i >= 0; i -= 1) {
@@ -199,7 +469,7 @@ function setTurnExpanded(key, expanded) {
   for (const fn of [...listeners]) fn();
 }
 function useTurnExpanded(key) {
-  return React.useSyncExternalStore(
+  return React2.useSyncExternalStore(
     (callback) => {
       if (key === void 0) return () => {
       };
@@ -221,12 +491,12 @@ function FallbackToolCard({ toolName, block, t }) {
   if (!settled) argsText = block.argsRaw ?? "";
   else if (block.call?.argsRaw) argsText = block.call.argsRaw;
   const output = settled ? flattenContent(block.content) : "";
-  return React2.createElement(
+  return React3.createElement(
     "div",
     { className: "dshToolGroupFallback" },
-    React2.createElement("div", { className: "dshToolGroupFallbackTitle" }, `${toolName}${error ? " \u2715" : ""}`),
-    argsText !== "" ? React2.createElement("pre", { className: "dshToolGroupFallbackArgs" }, argsText) : null,
-    settled && output !== "" ? React2.createElement("pre", { className: "dshToolGroupFallbackOutput", "data-error": error || void 0 }, output) : null
+    React3.createElement("div", { className: "dshToolGroupFallbackTitle" }, `${toolName}${error ? " \u2715" : ""}`),
+    argsText !== "" ? React3.createElement("pre", { className: "dshToolGroupFallbackArgs" }, argsText) : null,
+    settled && output !== "" ? React3.createElement("pre", { className: "dshToolGroupFallbackOutput", "data-error": error || void 0 }, output) : null
   );
 }
 function flattenContent(content) {
@@ -241,7 +511,7 @@ function flattenContent(content) {
   }
   return "";
 }
-var ToolCallBranch = React2.memo(function ToolCallBranch2({
+var ToolCallBranch = React3.memo(function ToolCallBranch2({
   renderSlot,
   block,
   selectedCallId,
@@ -251,7 +521,7 @@ var ToolCallBranch = React2.memo(function ToolCallBranch2({
   t
 }) {
   const name2 = callName(block);
-  const owner = React2.useMemo(
+  const owner = React3.useMemo(
     () => ({
       callId: block.callId,
       toolName: name2,
@@ -264,11 +534,11 @@ var ToolCallBranch = React2.memo(function ToolCallBranch2({
     }),
     [block, name2, openFile, cwd, inspectCall]
   );
-  const children = block.subCalls !== void 0 && block.subCalls.length > 0 ? React2.createElement(
+  const children = block.subCalls !== void 0 && block.subCalls.length > 0 ? React3.createElement(
     "div",
     { className: "dshToolGroupSubCalls", "data-subcalls": true },
     block.subCalls.map(
-      (child) => React2.createElement(ToolCallBranch2, {
+      (child) => React3.createElement(ToolCallBranch2, {
         key: child.callId,
         renderSlot,
         block: child,
@@ -280,7 +550,7 @@ var ToolCallBranch = React2.memo(function ToolCallBranch2({
       })
     )
   ) : null;
-  return React2.createElement(
+  return React3.createElement(
     "div",
     {
       className: "dshToolGroupCallRow",
@@ -290,12 +560,12 @@ var ToolCallBranch = React2.memo(function ToolCallBranch2({
     },
     renderSlot("tool.call.toolview", owner, {
       entryKey: name2,
-      fallback: React2.createElement(FallbackToolCard, { toolName: name2, block, t })
+      fallback: React3.createElement(FallbackToolCard, { toolName: name2, block, t })
     }),
     children
   );
 });
-function firstLine(text) {
+function firstLine2(text) {
   const newline = text.indexOf("\n");
   return newline === -1 ? text : text.slice(0, newline);
 }
@@ -305,18 +575,18 @@ function latestLine(text) {
   return newline === -1 ? visible : visible.slice(newline + 1);
 }
 function InlineThink({ text, running, t }) {
-  const [expanded, setExpanded] = React2.useState(false);
-  const summary = running ? latestLine(text) : firstLine(text);
-  return React2.createElement(
+  const [expanded, setExpanded] = React3.useState(false);
+  const summary = running ? latestLine(text) : firstLine2(text);
+  return React3.createElement(
     "div",
     { className: "dshToolGroupThink", "data-variant": "think", "data-state": running ? "running" : "ok" },
-    running ? React2.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
-    React2.createElement(import_dsh_client_ui_primitives.DisclosureRow, {
+    running ? React3.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
+    React3.createElement(import_dsh_client_ui_primitives.DisclosureRow, {
       rowClassName: "dshToolGroupThinkRow",
       leadingClassName: "dshToolGroupThinkLeading",
       titleClassName: "dshToolGroupThinkTitle",
       chevronClassName: "dshToolGroupThinkChevron",
-      icon: React2.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 }),
+      icon: React3.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 }),
       title: "Think",
       open: expanded,
       expandable: true,
@@ -324,17 +594,17 @@ function InlineThink({ text, running, t }) {
       onToggle: () => {
         setExpanded((value) => !value);
       },
-      collapsedContent: React2.createElement(
-        React2.Fragment,
+      collapsedContent: React3.createElement(
+        React3.Fragment,
         null,
-        React2.createElement("span", { className: "dshToolGroupThinkSeparator", "aria-hidden": true }),
-        React2.createElement(
+        React3.createElement("span", { className: "dshToolGroupThinkSeparator", "aria-hidden": true }),
+        React3.createElement(
           "span",
           { className: "dshToolGroupThinkSummary", "data-follow-end": running || void 0 },
           summary
         )
       ),
-      children: React2.createElement("div", { className: "dshToolGroupThinkBody" }, text)
+      children: React3.createElement("div", { className: "dshToolGroupThinkBody" }, text)
     })
   );
 }
@@ -343,11 +613,11 @@ function ThinkItem({ item, t }) {
   const reasoning = blocks.filter((block) => block.kind === "reasoning" && (block.text ?? "").trim() !== "");
   if (reasoning.length === 0) return null;
   const running = item.node.data?.status === "running";
-  return React2.createElement(
-    React2.Fragment,
+  return React3.createElement(
+    React3.Fragment,
     null,
     reasoning.map(
-      (block, index) => React2.createElement(InlineThink, {
+      (block, index) => React3.createElement(InlineThink, {
         key: `${item.key}:${index}`,
         text: block.text ?? "",
         running: running && index === reasoning.length - 1,
@@ -356,11 +626,11 @@ function ThinkItem({ item, t }) {
     )
   );
 }
-var TurnFoldBar = React2.memo(function TurnFoldBar2({ expanded, onToggle, onKeyDown, t }) {
-  const chevron = React2.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
+var TurnFoldBar = React3.memo(function TurnFoldBar2({ expanded, onToggle, onKeyDown, t }) {
+  const chevron = React3.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
     className: "dshToolGroupChevron"
   });
-  return React2.createElement(
+  return React3.createElement(
     "div",
     {
       className: "dshTurnFoldRow",
@@ -371,16 +641,49 @@ var TurnFoldBar = React2.memo(function TurnFoldBar2({ expanded, onToggle, onKeyD
       onClick: onToggle,
       onKeyDown
     },
-    React2.createElement("span", { className: "dshTurnFoldLabel" }, t("turnFolded")),
+    React3.createElement("span", { className: "dshTurnFoldLabel" }, t("turnFolded")),
     chevron
   );
 });
-var GroupBar = React2.memo(function GroupBar2({ group, expanded, onToggle, onKeyDown, t }) {
-  const runningName = isRunningBlock(group.running) ? group.running.name : null;
-  const chevron = React2.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
+var LiveRow = React3.memo(function LiveRow2({ node, cwd, t }) {
+  let icon;
+  let title;
+  let summary;
+  const think = isTransparentAssistant(node);
+  const running = isLiveWorkNode(node);
+  if (think) {
+    const blocks = node.data?.blocks ?? [];
+    const reasoning = blocks.filter((block) => block.kind === "reasoning" && (block.text ?? "").trim() !== "");
+    const text = reasoning.length > 0 ? reasoning[reasoning.length - 1].text ?? "" : "";
+    icon = React3.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 });
+    title = "Think";
+    summary = running ? latestLine(text) : firstLine2(text);
+  } else {
+    const block = node.data?.root;
+    const name2 = block === void 0 ? "" : callName(block);
+    const row = runningToolRow(name2, block ?? { callId: node.key, name: name2 }, cwd);
+    icon = React3.createElement(name2 === "ask_user_question" ? import_dsh_client_ui_primitives.IconQuestionOutline14 : import_dsh_client_ui_primitives.IconApiOutline14, { size: 14 });
+    title = row.title;
+    summary = row.summary;
+  }
+  return React3.createElement(
+    React3.Fragment,
+    null,
+    running ? React3.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
+    React3.createElement("span", { className: "dshToolGroupLiveIcon" }, icon),
+    React3.createElement("span", { className: "dshToolGroupLiveTitle" }, title),
+    React3.createElement("span", { className: "dshToolGroupLiveSep", "aria-hidden": true }),
+    React3.createElement("span", { className: "dshToolGroupLiveSummary" }, summary)
+  );
+});
+var GroupBar = React3.memo(function GroupBar2({ group, expanded, onToggle, onKeyDown, t, cwd, live }) {
+  const liveShown = live !== void 0 && !expanded && group.itemKeys.includes(live.key);
+  const liveRunning = liveShown && isLiveWorkNode(live);
+  const liveNode = liveShown ? React3.createElement(LiveRow, { node: live, cwd, t }) : null;
+  const chevron = React3.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
     className: "dshToolGroupChevron"
   });
-  return React2.createElement(
+  return React3.createElement(
     "div",
     {
       className: "dshToolGroupRow",
@@ -389,33 +692,39 @@ var GroupBar = React2.memo(function GroupBar2({ group, expanded, onToggle, onKey
       "aria-expanded": expanded,
       "aria-label": t("folded", { count: group.count }),
       onClick: onToggle,
-      onKeyDown
+      onKeyDown,
+      "data-state": liveRunning ? "running" : "settled"
     },
-    React2.createElement(
-      "div",
-      { className: "dshToolGroupLeft" },
-      runningName !== null ? [React2.createElement("span", { key: "running", className: "dshToolGroupRunning" }, t("running")), React2.createElement("span", { key: "name", className: "dshToolGroupName" }, runningName)] : null
-    ),
-    React2.createElement(
+    React3.createElement("div", { className: "dshToolGroupLeft" }, liveNode),
+    React3.createElement(
       "div",
       { className: "dshToolGroupRight" },
-      React2.createElement("span", { className: "dshToolGroupCount" }, t("folded", { count: group.count })),
+      React3.createElement("span", { className: "dshToolGroupCount" }, t("folded", { count: group.count })),
       chevron
     )
   );
 });
-var GroupItems = React2.memo(function GroupItems2(props) {
-  const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall } = props;
-  return React2.createElement(
+var RetryItem = React3.memo(function RetryItem2({ item, conversationT: conversationT2 }) {
+  const official = officialNodeEntry("model-retry");
+  const t = conversationT2 ?? getConversationT();
+  if (official === void 0 || official.component == null || t === void 0) return null;
+  return React3.createElement(official.component, { node: item.node, t });
+});
+var GroupItems = React3.memo(function GroupItems2(props) {
+  const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT: conversationT2 } = props;
+  return React3.createElement(
     "div",
     { className: "dshToolGroupItems" },
     group.items.map((item) => {
       if (item.kind === "think") {
-        return React2.createElement(ThinkItem, { key: item.key, item, t });
+        return React3.createElement(ThinkItem, { key: item.key, item, t });
+      }
+      if (item.kind === "retry") {
+        return React3.createElement(RetryItem, { key: item.key, item, conversationT: conversationT2 });
       }
       const root = item.node.data?.root;
       if (root === void 0 || renderSlot === void 0 || openFile === void 0 || inspectCall === void 0) return null;
-      return React2.createElement(ToolCallBranch, {
+      return React3.createElement(ToolCallBranch, {
         key: item.key,
         renderSlot,
         block: root,
@@ -429,92 +738,16 @@ var GroupItems = React2.memo(function GroupItems2(props) {
   );
 });
 function FoldedSeat() {
-  return React2.createElement("div", { "data-tool-group-hidden": "" });
+  return React3.createElement("div", { "data-tool-group-hidden": "" });
 }
-var ToolCallGroupView = React2.memo(function ToolCallGroupView2(props) {
+var ToolCallGroupView = React3.memo(function ToolCallGroupView2(props) {
   const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t, sessionId } = props;
   const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup);
   const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
-  const [expanded, setExpanded] = React2.useState(false);
-  const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
-  const toggle = React2.useCallback(() => setExpanded((value) => !value), []);
-  const onKeyDown = React2.useCallback((event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setExpanded((value) => !value);
-    }
-  }, []);
-  const turnKey = turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`;
-  const turnToggle = React2.useCallback(() => {
-    if (turnKey === void 0) return;
-    setTurnExpanded(turnKey, !turnExpanded);
-  }, [turnKey, turnExpanded]);
-  const turnKeyDown = React2.useCallback(
-    (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        turnToggle();
-      }
-    },
-    [turnToggle]
-  );
-  if (group === null || !isGroupLeader(group, node.key)) {
-    return React2.createElement(FoldedSeat, null);
-  }
-  const runningName = isRunningBlock(group.running) ? group.running.name : null;
-  const small = React2.createElement(
-    "div",
-    { className: "dshToolGroup", "data-tool-group": "", "data-state": runningName !== null ? "running" : "settled" },
-    React2.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
-    expanded ? React2.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall }) : null
-  );
-  if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-    const first = node.key === turnInfo.firstKey;
-    if (!turnExpanded) {
-      return first ? React2.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React2.createElement(FoldedSeat, null);
-    }
-    return React2.createElement(
-      React2.Fragment,
-      null,
-      first ? React2.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-      turnExpanded ? small : null
-    );
-  }
-  return small;
-});
-
-// src/client/AssistantNodeWrapper.tsx
-var slotsService;
-var groupT;
-function setSlotsService(service) {
-  slotsService = service;
-}
-function setGroupT(t) {
-  groupT = t;
-}
-function officialAssistantEntry() {
-  const service = slotsService;
-  if (service === void 0) return void 0;
-  const all = service.entries("conversation.chat.node");
-  return all.find((entry) => entry.options.key === "assistant-step" && (entry.options.priority ?? 0) === 0);
-}
-function renderOfficial(props) {
-  const { node } = props;
-  const official = officialAssistantEntry();
-  if (official === void 0 || official.component == null) return null;
-  const data = node.data;
-  const blocks = data?.blocks;
-  const filtered = Array.isArray(blocks) ? blocks.filter((b) => b.kind !== "reasoning") : blocks;
-  const forwarded = filtered === blocks ? props : { ...props, node: { ...node, data: { ...data, blocks: filtered } } };
-  return React3.createElement(official.component, forwarded);
-}
-function FoldedSeat2() {
-  return React3.createElement("div", { "data-tool-group-hidden": "" });
-}
-var AssistantNodeWrapper = React3.memo(function AssistantNodeWrapper2(props) {
-  const { node, useSession, sessionId } = props;
-  const group = useSession((snapshot) => isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null, eqGroup);
-  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
+  const live = useSession((snapshot) => latestWorkNode(snapshot.chat));
+  const hasMore = useSession((snapshot) => snapshot.hasMore === true);
+  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true);
+  const conversationT2 = getConversationT();
   const [expanded, setExpanded] = React3.useState(false);
   const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
   const toggle = React3.useCallback(() => setExpanded((value) => !value), []);
@@ -538,35 +771,415 @@ var AssistantNodeWrapper = React3.memo(function AssistantNodeWrapper2(props) {
     },
     [turnToggle]
   );
-  const t = groupT ?? ((key, params) => params && "count" in params ? String(params.count) : key);
-  const thinkContent = group !== null && isGroupLeader(group, node.key) ? React3.createElement(
-    React3.Fragment,
-    null,
-    React3.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t }),
-    expanded ? React3.createElement(GroupItems, { group, t }) : null
-  ) : null;
-  if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
-    return renderOfficial(props);
+  let output;
+  if (group === null || !isGroupLeader(group, node.key)) {
+    output = React3.createElement(FoldedSeat, null);
+  } else {
+    const small = React3.createElement(
+      "div",
+      { className: "dshToolGroup", "data-tool-group": "", "data-state": live !== void 0 && !expanded && group.itemKeys.includes(live.key) && isLiveWorkNode(live) ? "running" : "settled" },
+      React3.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
+      expanded ? React3.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT: conversationT2 }) : null
+    );
+    if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+      const first = node.key === turnInfo.firstKey;
+      if (!turnExpanded) {
+        output = first ? React3.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React3.createElement(FoldedSeat, null);
+      } else {
+        output = React3.createElement(
+          React3.Fragment,
+          null,
+          first ? React3.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+          turnExpanded ? small : null
+        );
+      }
+    } else {
+      output = small;
+    }
   }
-  if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+  return React3.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+});
+
+// src/client/translate.ts
+var groupT;
+function setGroupT(t) {
+  groupT = t;
+}
+function getGroupT() {
+  return groupT;
+}
+
+// src/client/AssistantNodeWrapper.tsx
+function officialAssistantEntry() {
+  return officialNodeEntry("assistant-step");
+}
+function renderOfficial(props) {
+  const { node } = props;
+  const official = officialAssistantEntry();
+  if (official === void 0 || official.component == null) return null;
+  const data = node.data;
+  const blocks = data?.blocks;
+  const filtered = Array.isArray(blocks) ? blocks.filter((b) => b.kind !== "reasoning") : blocks;
+  const forwarded = filtered === blocks ? props : { ...props, node: { ...node, data: { ...data, blocks: filtered } } };
+  return React4.createElement(official.component, forwarded);
+}
+function FoldedSeat2() {
+  return React4.createElement("div", { "data-tool-group-hidden": "" });
+}
+var AssistantNodeWrapper = React4.memo(function AssistantNodeWrapper2(props) {
+  const { node, useSession, sessionId } = props;
+  setConversationT(typeof props.t === "function" ? props.t : void 0);
+  const group = useSession((snapshot) => isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null, eqGroup);
+  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
+  const live = useSession((snapshot) => latestWorkNode(snapshot.chat));
+  const hasMore = useSession((snapshot) => snapshot.hasMore === true);
+  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true);
+  const [expanded, setExpanded] = React4.useState(false);
+  const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
+  const toggle = React4.useCallback(() => setExpanded((value) => !value), []);
+  const onKeyDown = React4.useCallback((event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setExpanded((value) => !value);
+    }
+  }, []);
+  const turnKey = turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`;
+  const turnToggle = React4.useCallback(() => {
+    if (turnKey === void 0) return;
+    setTurnExpanded(turnKey, !turnExpanded);
+  }, [turnKey, turnExpanded]);
+  const turnKeyDown = React4.useCallback(
+    (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        turnToggle();
+      }
+    },
+    [turnToggle]
+  );
+  const t = getGroupT() ?? ((key, params) => params && "count" in params ? String(params.count) : key);
+  const thinkContent = group !== null && isGroupLeader(group, node.key) ? React4.createElement(
+    React4.Fragment,
+    null,
+    React4.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live }),
+    expanded ? React4.createElement(GroupItems, { group, t, conversationT: typeof props.t === "function" ? props.t : void 0 }) : null
+  ) : null;
+  let output;
+  if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
+    output = renderOfficial(props);
+  } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
     const first = node.key === turnInfo.firstKey;
     if (!turnExpanded) {
-      return first ? React3.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React3.createElement(FoldedSeat2, null);
+      output = first ? React4.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React4.createElement(FoldedSeat2, null);
+    } else {
+      const content = group === null ? renderOfficial(props) : thinkContent;
+      if (content === null) {
+        output = first ? React4.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React4.createElement(FoldedSeat2, null);
+      } else {
+        output = React4.createElement(
+          React4.Fragment,
+          null,
+          first ? React4.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+          content
+        );
+      }
     }
-    const content = group === null ? renderOfficial(props) : thinkContent;
-    if (content === null) {
-      return first ? React3.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React3.createElement(FoldedSeat2, null);
-    }
-    return React3.createElement(
-      React3.Fragment,
-      null,
-      first ? React3.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-      content
-    );
+  } else if (group === null) {
+    output = renderOfficial(props);
+  } else if (thinkContent === null) {
+    output = React4.createElement(FoldedSeat2, null);
+  } else {
+    output = thinkContent;
   }
-  if (group === null) return renderOfficial(props);
-  if (thinkContent === null) return React3.createElement(FoldedSeat2, null);
-  return thinkContent;
+  return React4.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+});
+
+// src/client/UserNodeWrapper.tsx
+var React5 = __toESM(__dynRequire("react"), 1);
+var import_dsh_client_ui_primitives2 = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
+var import_dsh_client_ui_attachment = __dynRequire("@deepseek-ai/dsh-client-ui-attachment");
+var NOOP_T = (key, params) => params !== void 0 && "count" in params ? String(params.count) : key;
+function contentParts(content) {
+  const texts = [];
+  const images = [];
+  const rest = [];
+  for (const raw of content) {
+    if (raw === null || typeof raw !== "object") {
+      rest.push(raw);
+      continue;
+    }
+    const block = raw;
+    if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
+    else if (block.type === "image" && block.attachment !== void 0) images.push({ attachment: block.attachment });
+    else rest.push(raw);
+  }
+  return { text: texts.join(""), images, rest };
+}
+var REF_TOKEN = /(^|\s)([/@][\w-]+)(?=\s|$)/g;
+function projectUserText(text) {
+  const parts = [];
+  let cursor = 0;
+  let match;
+  REF_TOKEN.lastIndex = 0;
+  while ((match = REF_TOKEN.exec(text)) !== null) {
+    const tokenStart = match.index + (match[1]?.length ?? 0);
+    const label = match[2] ?? "";
+    if (tokenStart > cursor) {
+      parts.push(React5.createElement(import_dsh_client_ui_primitives2.MessageText, { key: `t${cursor}`, text: text.slice(cursor, tokenStart) }));
+    }
+    parts.push(
+      React5.createElement(
+        "span",
+        { key: `r${tokenStart}`, className: "dshUserRefChip", "data-ref-chip": label.startsWith("@") ? "subagent" : "skill" },
+        label
+      )
+    );
+    cursor = tokenStart + label.length;
+  }
+  if (parts.length === 0) return React5.createElement(import_dsh_client_ui_primitives2.MessageText, { text });
+  if (cursor < text.length) parts.push(React5.createElement(import_dsh_client_ui_primitives2.MessageText, { key: `t${cursor}`, text: text.slice(cursor) }));
+  return React5.createElement(React5.Fragment, null, parts);
+}
+function imageLabels(t) {
+  return {
+    image: t("image.label"),
+    open: t("image.openOriginal"),
+    openNamed: (label) => t("image.openOriginalLabel", { label }),
+    loading: t("image.loading"),
+    loadFailed: t("image.loadFailed"),
+    lightbox: { dialog: t("image.preview"), close: t("image.closePreview") }
+  };
+}
+function pad2(value) {
+  return value < 10 ? `0${value}` : String(value);
+}
+function formatClock(time, t) {
+  const d = new Date(time);
+  const now = /* @__PURE__ */ new Date();
+  const clock = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return clock;
+  const params = { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+  return `${d.getFullYear() === now.getFullYear() ? t("clock.md", params) : t("clock.ymd", params)} ${clock}`;
+}
+function CopyAction({ text, t }) {
+  const [copied, setCopied] = React5.useState(false);
+  const timer = React5.useRef(null);
+  React5.useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    []
+  );
+  const onCopy = () => {
+    if (copied) return;
+    void (0, import_dsh_client_ui_primitives2.writeClipboard)(text).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      timer.current = setTimeout(() => setCopied(false), 1e3);
+    });
+  };
+  return React5.createElement(
+    import_dsh_client_ui_primitives2.Tooltip,
+    { label: copied ? t("copied") : t("copy"), side: "bottom" },
+    React5.createElement(
+      "button",
+      { type: "button", className: "dshUserAction", "aria-label": copied ? t("copied") : t("copy"), onClick: onCopy },
+      copied ? React5.createElement(import_dsh_client_ui_primitives2.IconCheckOutline16, null) : React5.createElement(import_dsh_client_ui_primitives2.IconCopyOutline16, null)
+    )
+  );
+}
+var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
+  const { node, loadImage, t, sessionId, useSession } = props;
+  setConversationT(typeof t === "function" ? t : void 0);
+  const [expanded, setExpanded] = React5.useState(false);
+  const clampRef = React5.useRef(null);
+  const [overflowing, setOverflowing] = React5.useState(false);
+  React5.useEffect(() => {
+    const el = clampRef.current;
+    if (el === null) return;
+    const update = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [expanded]);
+  const toggle = React5.useCallback(() => setExpanded((value) => !value), []);
+  const hasMore = typeof useSession === "function" ? useSession((snapshot) => snapshot.hasMore === true) : false;
+  const loadingOlder = typeof useSession === "function" ? useSession((snapshot) => snapshot.loadingOlder === true) : false;
+  const data = node.data ?? {};
+  const rawContent = data.content;
+  const content = Array.isArray(rawContent) ? rawContent : typeof rawContent === "string" ? [{ type: "text", text: rawContent }] : [];
+  const { text, images, rest } = contentParts(content);
+  const showBubble = text !== "" || rest.length > 0;
+  const translate = t ?? NOOP_T;
+  const toolT = getGroupT() ?? translate;
+  const labels = imageLabels(translate);
+  const showToggle = expanded || overflowing;
+  const output = React5.createElement(
+    "div",
+    { className: "dshUserRow", "data-time-hover-root": "" },
+    React5.createElement(
+      "div",
+      { className: "dshUserStack" },
+      images.length > 0 ? React5.createElement(import_dsh_client_ui_attachment.ImageGallery, {
+        images,
+        load: loadImage ?? (() => Promise.reject(new Error("image loader unavailable"))),
+        align: "end",
+        labels
+      }) : null,
+      showBubble ? React5.createElement(
+        "div",
+        { className: "dshUserBubble" },
+        // The clamp lives on a PADDING-FREE inner box: browsers that cut
+        // the clamp height short of the bottom padding (legacy line-clamp
+        // behavior) can still never show a partial 4th line or eat the
+        // bubble's bottom gap — max-height:72px is exactly 3 × 24px.
+        React5.createElement(
+          "div",
+          { ref: clampRef, className: "dshUserBubbleClamp", "data-clamped": expanded ? void 0 : "" },
+          text !== "" ? projectUserText(text) : null,
+          ...rest.map(
+            (block, index) => React5.createElement(import_dsh_client_ui_primitives2.JsonBlock, {
+              key: `extra${index}`,
+              label: translate("message.extraBlock"),
+              payload: block,
+              truncatedLabel: (total) => translate("json.truncated", { total })
+            })
+          )
+        )
+      ) : null,
+      showBubble ? React5.createElement(
+        "button",
+        {
+          type: "button",
+          className: "dshUserFoldToggle",
+          "data-shown": showToggle ? "" : void 0,
+          "aria-expanded": expanded,
+          // A native button: Enter/Space activate through onClick — no
+          // manual onKeyDown (that would double-toggle).
+          onClick: toggle
+        },
+        React5.createElement(expanded ? import_dsh_client_ui_primitives2.IconChevronUpOutline14 : import_dsh_client_ui_primitives2.IconChevronDownOutline14, { size: 14 }),
+        toolT(expanded ? "collapse" : "expand")
+      ) : null
+    ),
+    React5.createElement(
+      "div",
+      { className: "dshUserActions" },
+      data.time !== void 0 ? React5.createElement("span", { key: "time", className: "dshUserTime" }, formatClock(data.time, translate)) : null,
+      React5.createElement(CopyAction, { key: "copy", text, t: translate })
+    )
+  );
+  return React5.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+});
+
+// src/client/NoticeNodeWrapper.tsx
+var React6 = __toESM(__dynRequire("react"), 1);
+var NOTICE_KINDS = /* @__PURE__ */ new Set([
+  "compaction",
+  "context",
+  "manual-compaction",
+  "command",
+  "model-retry",
+  "turn-error",
+  "turn-max-tokens",
+  "unknown",
+  "workflow-run"
+]);
+function singleGroup(node) {
+  return { leaderKey: node.key, itemKeys: [node.key], items: [], count: 1, running: void 0, runningItem: void 0 };
+}
+function FoldedSeat3() {
+  return React6.createElement("div", { "data-tool-group-hidden": "" });
+}
+var NoticeNodeWrapper = React6.memo(function NoticeNodeWrapper2(props) {
+  const { node, useSession, sessionId } = props;
+  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
+  const retryGroup = useSession((snapshot) => node.kind === "model-retry" ? groupOf(snapshot.chat, node.key) : null, eqGroup);
+  const live = useSession((snapshot) => latestWorkNode(snapshot.chat));
+  const hasMore = useSession((snapshot) => snapshot.hasMore === true);
+  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true);
+  const [expanded, setExpanded] = React6.useState(false);
+  const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
+  const toggle = React6.useCallback(() => setExpanded((value) => !value), []);
+  const onKeyDown = React6.useCallback((event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setExpanded((value) => !value);
+    }
+  }, []);
+  const turnKey = turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`;
+  const turnToggle = React6.useCallback(() => {
+    if (turnKey === void 0) return;
+    setTurnExpanded(turnKey, !turnExpanded);
+  }, [turnKey, turnExpanded]);
+  const turnKeyDown = React6.useCallback(
+    (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        turnToggle();
+      }
+    },
+    [turnToggle]
+  );
+  const t = getGroupT() ?? ((key, params) => params && "count" in params ? String(params.count) : key);
+  setConversationT(typeof props.t === "function" ? props.t : void 0);
+  let output;
+  if (!NOTICE_KINDS.has(node.kind)) {
+    output = React6.createElement(FoldedSeat3, null);
+  } else if (isRetryNode(node) && retryGroup !== null) {
+    if (!isGroupLeader(retryGroup, node.key)) {
+      output = React6.createElement(FoldedSeat3, null);
+    } else {
+      const conversationT2 = typeof props.t === "function" ? props.t : void 0;
+      const groupSmall = React6.createElement(
+        "div",
+        { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
+        React6.createElement(GroupBar, { group: retryGroup, expanded, onToggle: toggle, onKeyDown, t, live }),
+        expanded ? React6.createElement(GroupItems, { group: retryGroup, t, conversationT: conversationT2 }) : null
+      );
+      const first = node.key === turnInfo?.firstKey;
+      if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+        output = turnExpanded ? React6.createElement(React6.Fragment, null, first ? React6.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null, groupSmall) : first ? React6.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React6.createElement(FoldedSeat3, null);
+      } else {
+        output = groupSmall;
+      }
+    }
+  } else {
+    const official = officialNodeEntry(node.kind);
+    const officialContent = official === void 0 || official.component == null ? null : React6.createElement(official.component, props);
+    if (officialContent === null) {
+      output = React6.createElement(FoldedSeat3, null);
+    } else {
+      const group = singleGroup(node);
+      const bar = React6.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live });
+      const notice = React6.createElement(
+        "div",
+        { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
+        bar,
+        expanded ? React6.createElement("div", { className: "dshToolGroupItems" }, officialContent) : null
+      );
+      if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
+        output = officialContent;
+      } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+        const first = node.key === turnInfo.firstKey;
+        if (!turnExpanded) {
+          output = first ? React6.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React6.createElement(FoldedSeat3, null);
+        } else {
+          output = React6.createElement(
+            React6.Fragment,
+            null,
+            first ? React6.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+            notice
+          );
+        }
+      } else {
+        output = notice;
+      }
+    }
+  }
+  return React6.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
 });
 
 // src/client/styles.ts
@@ -593,23 +1206,33 @@ var CSS = `
   display:flex;align-items:center;gap:12px;min-width:0;height:24px;
   box-sizing:border-box;padding:0 8px;border-radius:6px;
   cursor:pointer;user-select:none;outline:none;
-  font-size:14px;line-height:24px;
+  font-size:14px;line-height:24px;position:relative;overflow:hidden;
 }
 .dshToolGroupRow:hover,
 .dshToolGroupRow:focus-visible{
   background:var(--dsw-alias-interactive-bg-hover);
 }
+.dshToolGroupRow[data-state=running]:after{
+  content:"";inset-block:0;pointer-events:none;width:300px;
+  background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);
+  animation:2.6s ease-out infinite dshToolGroup-reasoning-sweep;
+  position:absolute;left:0;
+}
 .dshToolGroupLeft{
   display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;overflow:hidden;
 }
-.dshToolGroupRunning{
-  color:var(--dsw-alias-state-business-primary);
-  flex:none;white-space:nowrap;font-size:14px;line-height:24px;
+.dshToolGroupLiveIcon{color:var(--dsw-alias-label-secondary);flex:none;display:inline-flex}
+.dshToolGroupLiveTitle{
+  color:var(--dsw-alias-label-secondary);flex:none;
+  white-space:nowrap;font-size:14px;line-height:24px;
 }
-.dshToolGroupName{
-  color:var(--dsw-alias-label-secondary);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  font-size:14px;line-height:24px;
+.dshToolGroupLiveSep{
+  background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;
+  width:2px;height:2px;margin:0 4px;
+}
+.dshToolGroupLiveSummary{
+  min-width:0;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;
+  white-space:nowrap;flex:auto;font-size:14px;line-height:24px;overflow:hidden;
 }
 .dshToolGroupRight{
   display:flex;align-items:center;gap:6px;flex:none;
@@ -655,7 +1278,8 @@ var CSS = `
   position:absolute;overflow:hidden;
 }
 @media (prefers-reduced-motion:reduce){
-  .dshToolGroupThink[data-state=running] .dshToolGroupThinkRow:after{animation:none}
+  .dshToolGroupThink[data-state=running] .dshToolGroupThinkRow:after,
+  .dshToolGroupRow[data-state=running]:after{animation:none}
 }
 .dshToolGroupCallRow{border-radius:6px}
 .dshToolGroupSubCalls{
@@ -686,8 +1310,52 @@ var CSS = `
   font-size:12px;line-height:18px;
 }
 .dshToolGroupFallbackOutput[data-error=true]{color:var(--dsw-alias-state-error-primary)}
+/* ------------------------------------------------------------------ */
+/* User message: product UserStyleBubble replica + 3-line fold.        */
+/* ------------------------------------------------------------------ */
+.dshUserRow{flex-direction:column;align-items:flex-end;gap:6px;display:flex}
+.dshUserStack{flex-direction:column;align-items:flex-end;gap:8px;min-width:0;max-width:min(525px,82%);display:flex}
+.dshUserBubble{background:var(--dsw-specific-bubble);max-width:100%;color:var(--dsw-alias-label-primary);border-radius:22px;padding:10px 16px;font-size:16px;line-height:24px}
+/* The clamp lives on a PADDING-FREE inner box so every browser renders
+   exactly 3 lines and keeps the bubble's 10px bottom gap: max-height:72px
+   is 3 \xD7 24px and clips any partial line a legacy line-clamp would show. */
+.dshUserBubbleClamp[data-clamped]{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
+  overflow:hidden;max-height:72px;
+}
+.dshUserRefChip{
+  color:var(--dsw-alias-label-primary);white-space:nowrap;vertical-align:baseline;
+  background:#6187d838;border-radius:6px;margin:0 2px;padding:0 8px;
+  font-size:.85em;line-height:1.6;display:inline-block;
+}
+.dshUserFoldToggle{
+  display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;
+  color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:22px;
+  background:none;border:none;border-radius:6px;cursor:pointer;outline:none;
+  font-family:inherit;user-select:none;
+}
+.dshUserFoldToggle:not([data-shown]){display:none}
+.dshUserFoldToggle:hover,
+.dshUserFoldToggle:focus-visible{
+  color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover);
+}
+.dshUserActions{align-items:center;gap:10px;height:28px;display:flex}
+.dshUserTime{color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:12px;font-size:14px;line-height:24px}
+@media (hover:hover){
+  [data-time-hover-root] .dshUserTime{opacity:0;transition:opacity 80ms}
+  [data-time-hover-root]:hover .dshUserTime,
+  [data-time-hover-root]:focus-within .dshUserTime{opacity:1}
+}
+.dshUserAction{
+  width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;
+  background:0 0;border:none;border-radius:28px;justify-content:center;
+  align-items:center;padding:6px;display:inline-flex;
+}
+.dshUserAction:hover{
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
+}
 `;
-var STYLE_ID = "dsh-tool-group/styles";
+var STYLE_ID = "dsh-fold/styles";
 function insertStyle(doc) {
   const existing = doc.querySelector(`style[data-plugin-css="${STYLE_ID}"]`);
   if (existing !== null) {
@@ -695,7 +1363,7 @@ function insertStyle(doc) {
     };
   }
   const tag = doc.createElement("style");
-  tag.setAttribute("data-plugin", "dsh-tool-group");
+  tag.setAttribute("data-plugin", "dsh-fold");
   tag.setAttribute("data-plugin-css", STYLE_ID);
   tag.textContent = CSS;
   doc.head.appendChild(tag);
@@ -722,7 +1390,7 @@ function installSlotCoreOverlay(SlotCore2) {
   const originalRegister = SlotCore2.prototype.register;
   const originalRelease = SlotCore2.prototype.releaseEntry;
   if (typeof originalRegister !== "function" || typeof originalRelease !== "function") {
-    throw new Error("dsh-tool-group: SlotCore.register/releaseEntry are not functions; refusing to install the overlay (plugin stays inert)");
+    throw new Error("dsh-fold: SlotCore.register/releaseEntry are not functions; refusing to install the overlay (plugin stays inert)");
   }
   const coOwners = /* @__PURE__ */ new Map();
   const wrappedRegister = function(options, component) {
@@ -754,7 +1422,7 @@ function installSlotCoreOverlay(SlotCore2) {
     const created = Array.isArray(after) ? after.find((e) => !Array.isArray(before) || !before.includes(e)) : void 0;
     if (created === void 0) {
       dispose();
-      throw new Error("dsh-tool-group: could not locate the entry created by SlotCore.register; refusing the shadow (official UI keeps rendering)");
+      throw new Error("dsh-fold: could not locate the entry created by SlotCore.register; refusing the shadow (official UI keeps rendering)");
     }
     const entry = created;
     entry.children = { ...entry.children ?? {}, ...coSpecs };
@@ -805,35 +1473,36 @@ function installSlotCoreOverlay(SlotCore2) {
 
 // src/client/index.ts
 var DICTS = {
-  zh: { running: "\u6B63\u5728\u8FD0\u884C", group: "\u5DE5\u5177\u8C03\u7528\u7EC4", folded: "{count} \u4E2A\u5757\u5DF2\u88AB\u6298\u53E0", turnFolded: "\u8BE5\u8F6E\u6B21\u5DE5\u4F5C\u8FC7\u7A0B\u5DF2\u6298\u53E0" },
-  en: { running: "Running", group: "tool call group", folded: "{count} blocks folded", turnFolded: "Turn work process folded" }
+  zh: { running: "\u6B63\u5728\u8FD0\u884C", group: "\u5DE5\u5177\u8C03\u7528\u7EC4", folded: "{count} \u4E2A\u5757\u5DF2\u88AB\u6298\u53E0", turnFolded: "\u8BE5\u8F6E\u6B21\u5DE5\u4F5C\u8FC7\u7A0B\u5DF2\u6298\u53E0", expand: "\u5C55\u5F00", collapse: "\u6536\u8D77" },
+  en: { running: "Running", group: "tool call group", folded: "{count} blocks folded", turnFolded: "Turn work process folded", expand: "Expand", collapse: "Collapse" }
 };
-var name = "tool-group";
-var inject = ["slots", "locale"];
+var name = "fold";
+var inject = ["slots", "locale", "sessions"];
 function apply(ctx) {
   const slots = ctx.get("slots");
   const locale = ctx.get("locale");
   if (slots === void 0 || locale === void 0 || typeof document === "undefined") return;
   const restoreOverlay = installSlotCoreOverlay(import_dsh_client_ui_slots.SlotCore);
-  ctx.effect(() => restoreOverlay, "dsh-tool-group: slot-core overlay");
+  ctx.effect(() => restoreOverlay, "dsh-fold: slot-core overlay");
   setSlotsService(slots);
-  setGroupT(locale.bind("tool-group"));
-  ctx.effect(() => locale.register("tool-group", DICTS), "dsh-tool-group: dictionaries");
-  ctx.effect(() => insertStyle(document), "dsh-tool-group: styles");
+  setGroupT(locale.bind("fold"));
+  setSessionsService(ctx.get("sessions"));
+  ctx.effect(() => locale.register("fold", DICTS), "dsh-fold: dictionaries");
+  ctx.effect(() => insertStyle(document), "dsh-fold: styles");
   ctx.effect(
     () => slots.register(
       {
         name: "conversation.chat.node",
         key: "tool-call",
         priority: -100,
-        locale: "tool-group",
+        locale: "fold",
         children: {
           "tool.call.toolview": { kind: "keyed", scope: "session" }
         }
       },
       ToolCallGroupView
     ),
-    "dsh-tool-group: tool-call shadow"
+    "dsh-fold: tool-call shadow"
   );
   ctx.effect(
     () => slots.register(
@@ -845,7 +1514,34 @@ function apply(ctx) {
       },
       AssistantNodeWrapper
     ),
-    "dsh-tool-group: assistant-step shadow"
+    "dsh-fold: assistant-step shadow"
   );
+  ctx.effect(
+    () => slots.register(
+      {
+        name: "conversation.chat.node",
+        key: "user",
+        priority: -100,
+        locale: "conversation"
+      },
+      UserNodeWrapper
+    ),
+    "dsh-fold: user shadow"
+  );
+  for (const key of ["compaction", "context", "manual-compaction", "command", "model-retry", "turn-error", "turn-max-tokens", "unknown", "workflow-run"]) {
+    ctx.effect(
+      () => slots.register(
+        {
+          name: "conversation.chat.node",
+          key,
+          priority: -100,
+          locale: "conversation",
+          ...key === "command" ? { children: { "conversation.chat.commandview": { kind: "keyed", scope: "session" } } } : {}
+        },
+        NoticeNodeWrapper
+      ),
+      `dsh-fold: ${key} shadow`
+    );
+  }
 }
 return module.exports

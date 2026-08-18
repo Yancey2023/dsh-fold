@@ -178,7 +178,7 @@ export const CSS = `
 }
 `
 
-const STYLE_ID = 'dsh-tool-group/styles'
+const STYLE_ID = 'dsh-fold/styles'
 
 /**
  * Inject the package stylesheet once; returns a disposer that removes the tag
@@ -190,7 +190,7 @@ export function insertStyle(doc: Document): () => void {
     return () => {}
   }
   const tag = doc.createElement('style')
-  tag.setAttribute('data-plugin', 'dsh-tool-group')
+  tag.setAttribute('data-plugin', 'dsh-fold')
   tag.setAttribute('data-plugin-css', STYLE_ID)
   tag.textContent = CSS
   doc.head.appendChild(tag)
