@@ -191,7 +191,11 @@ setSlotsService({
 
   // Compaction seat: firstKey (renders the big bar) but NOT the group leader
   // (leader = first tool t1). Expanded big fold -> big bar WITHOUT any small
-  // "N 个块已被折叠" duplication.
+  // "N 个块已被折叠" duplication, and WITHOUT the [data-tool-group-hidden]
+  // marker sitting NEXT TO the bar: the package CSS
+  // `[data-chat-flow-key]:has([data-tool-group-hidden]){display:none}` would
+  // then hide this whole flow item (big bar included) and the turn could
+  // never be collapsed again — the reported regression.
   setTurnExpanded(':1', true)
   let comp
   await act(async () => {
@@ -201,6 +205,8 @@ setSlotsService({
   assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar at the first process seat')
   const compBars = findAll(comp.toJSON(), byClass('dshToolGroupRow'))
   assert.equal(compBars.length, 0, 'no small fold bar at the compaction seat (it is not the group leader)')
+  const hiddenMarkers = findAll(comp.toJSON(), (n) => typeof n.props?.['data-tool-group-hidden'] !== 'undefined')
+  assert.equal(hiddenMarkers.length, 0, 'no hidden marker next to the big fold bar (the bar stays clickable)')
   comp.unmount()
 
   // Context seat: process member, not the leader -> hidden marker, no bar.

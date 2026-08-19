@@ -129,8 +129,25 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
         // notices), so rendering it again here would duplicate the fold
         // block once per compaction/context member.
         const leaderSeat = inlineGroup !== null && isGroupLeader(inlineGroup, node.key)
-        const groupSmall = leaderSeat ? buildGroupSmall() : React.createElement(FoldedSeat, null)
-        output = React.createElement(React.Fragment, null, first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null, groupSmall)
+        // A lone notice whose only member has no official view collapses to
+        // the hidden marker (buildGroupSmall's fail-soft); a marker must never
+        // sit NEXT TO the big fold bar — the package CSS
+        //   [data-chat-flow-key]:has([data-tool-group-hidden]){display:none}
+        // would hide this ENTIRE flow item, bar included, and the turn could
+        // never be collapsed again. The first process seat therefore renders
+        // the bar alone (no marker); every other non-leader member keeps the
+        // marker so its flow item stays gap-free.
+        const groupSmall = leaderSeat ? buildGroupSmall() : first ? null : React.createElement(FoldedSeat, null)
+        const small =
+          first && groupSmall !== null && groupSmall.props !== undefined && (groupSmall.props as Record<string, unknown>)['data-tool-group-hidden'] !== undefined
+            ? null
+            : groupSmall
+        output = React.createElement(
+          React.Fragment,
+          null,
+          first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+          small,
+        )
       }
     } else if (inlineGroup === null || !isGroupLeader(inlineGroup, node.key)) {
       // Member of an inline group (or no group at all): hidden.
