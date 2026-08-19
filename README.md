@@ -12,9 +12,9 @@ no `display:none`, no `querySelector` games — the official product renderers
 are reused for every expanded tool card (and the user bubble is rebuilt from
 official primitives).
 
-![折叠块（工具合并/实时内容）](docs/fold-block.png)
-![轮次级大折叠](docs/fold-turn.png)
-![用户输入3行折叠](docs/fold-user-input.png)
+![Fold blocks (tool merge / live content)](docs/fold-block.png)
+![Turn-level big fold](docs/fold-turn.png)
+![User input 3-line fold](docs/fold-user-input.png)
 
 ## Behaviour
 
@@ -23,7 +23,7 @@ official primitives).
   Assistant-step nodes whose blocks contain ONLY reasoning (Think rows) are
   TRANSPARENT: they neither split chains, but fold WITH the group (hidden
   while collapsed, re-shown between the calls when expanded). Model-retry
-  notices (已重试模型请求) and context-injection rows (上下文注入) are
+  notices (model-retry) and context-injection rows (context) are
   transparent the same way — they never split a chain into separate bars;
   the row folds in with the adjacent work (neighboring fold blocks merge
   into one bar) and counts toward the group's block count. Think rows
@@ -36,7 +36,7 @@ official primitives).
   text. (In the DSH data model every tool-producing step streams a reasoning
   block, so without this rule every call would isolate into its own group.)
 - **While a call is running**: the collapsed line shows only the currently
-  running tool (`正在运行 <tool>` / `Running <tool>`), the accumulated call
+  running tool (`Running <tool>`), the accumulated call
   count (completed + running), and a chevron. When the running call settles,
   the label switches to the next running call, or disappears entirely once
   every call has settled — **including error/cancelled/interrupted calls**
@@ -51,15 +51,15 @@ official primitives).
 - **Turn-level big fold**: when a turn (one user message + the agent's whole
   working cycle) CLOSES with a final summary, everything except the summary —
   tool calls, Think rows AND intermediate assistant text — folds behind ONE
-  bar reading `该轮次工作过程已折叠` / `Turn work process folded`. The small
+  bar reading `Turn work process folded`. The small
   folds live INSIDE the big fold: expanding the big fold reveals them at
   their original positions; the summary text always stays visible. A turn
   that is still open, or that ended without a summary, keeps the current
   (small-fold only) view.
-- **Bar label**: the folded bar reports `N 个块已被折叠` / `N blocks folded`
+- **Bar label**: the folded bar reports `N blocks folded`
   — N is the number of folded blocks (tool calls + Think rows folded into
   the group; subcalls inside a block are not counted). While a call runs,
-  the left side shows `正在运行 <tool>` / `Running <tool>`.
+  the left side shows `Running <tool>`.
 - **Live block in the bar = the conversation's latest state**: the folded
   bar's left side shows what the CURRENT conversation is doing RIGHT NOW —
   the newest active block anywhere in the flow, not a per-group label: a
@@ -76,16 +76,16 @@ official primitives).
 - **Everything non-text folds**: automatic context compression
   (`compaction`), context injection (`context`), manual compaction
   (`manual-compaction`), user commands such as `/permission` (`command`),
-  model-retry notices (`model-retry` — 已重试模型请求), turn errors
+  model-retry notices (`model-retry`), turn errors
   (`turn-error`), max-token notices (`turn-max-tokens`), unknown surfaces
   (`unknown`) and workflow runs (`workflow-run`) are folded like any other
-  work block — each behind its own `1 个块已被折叠` bar in an open turn
+  work block — each behind its own `1 blocks folded` bar in an open turn
   (expandable, so diagnostics stay reachable), and inside the turn-level
   big fold once the turn closes with a summary. Only plain text (user and
   steering messages, assistant text, summaries and the summary's copy/chrome
   row) stays visible.
 - **User input**: a user message whose text overflows 3 lines is clamped to
-  3 lines with a `展开` / `Expand` toggle below the bubble (shown only when
+  3 lines with an `Expand` toggle below the bubble (shown only when
   the text really overflows, measured via ResizeObserver). The clamp lives
   on a PADDING-FREE inner box (`max-height: 72px` = exactly 3 × 24px line
   height), so every browser renders exactly 3 lines with the bubble's
@@ -102,7 +102,7 @@ official primitives).
   toggle hidden).
 - **Auto-load older at the top**: scrolling the conversation to the very
   top while older history exists automatically pulls the next page
-  (`loadOlder`) — no button click needed; the product's 加载更早 button
+  (`loadOlder`) — no button click needed; the product's `Load older` button
   remains as a manual fallback. While the user KEEPS resting at the top and
   `hasMore` stays true, pages continue loading one after another until the
   history is exhausted or the user scrolls away (each completed load re-arms
@@ -146,7 +146,7 @@ ChatView (conversation.view)
                    product:  UserMessageNodeView (priority 0)
                    ours:     UserNodeWrapper (priority -100)
                                 └─ product bubble replica from official
-                                     primitives + 3-line clamp + 展开/收起
+                                     primitives + 3-line clamp + Expand/Collapse
             └─ cells "compaction" / "context" / "manual-compaction" / "command":
                    product:  CompactionItem / ContextInjectionRow / … (priority 0)
                    ours:     NoticeNodeWrapper (priority -100)
@@ -246,8 +246,8 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
 
 | Case | Result |
 | --- | --- |
-| 1 single tool running | `正在运行 bash  1 ▸` |
-| 2 read✓ grep✓ bash running | `正在运行 bash  3 ▸` |
+| 1 single tool running | `Running bash  1 ▸` |
+| 2 read✓ grep✓ bash running | `Running bash  3 ▸` |
 | 3 all settled | `3 ▸` — left side empty |
 | 4 last failed | `2 ▸` — left side empty (error = ended) |
 | 5 expand | bar + official cards, in order |
@@ -256,14 +256,14 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
 | 8 two chains split by text | two independent bars |
 | 9 streaming | live count/running label via snapshot re-render (no polling) |
 | 10 uninstall | official ToolCallTree wins the cell again automatically |
-| 11 long user input | bubble clamps to exactly 3 lines, `展开` toggle appears |
-| 12 expand user input | full text, `收起` toggle, copy/time actions intact |
+| 11 long user input | bubble clamps to exactly 3 lines, `Expand` toggle appears |
+| 12 expand user input | full text, `Collapse` toggle, copy/time actions intact |
 | 13 short user input | untouched, no toggle |
 | 14 user message w/ images/refs | official gallery + `/name` `@name` chips preserved |
 | 15 running bash in a group | bar shows the real block row: `Bash · <description/command>` |
 | 16 streaming think (no tool yet) | bar shows `Think · <latest line>` |
 | 17 all settled | bar left side empty |
-| 18 compaction/context/命令 | folded (`1 个块已被折叠`), inside the big fold when closed |
+| 18 compaction/context/command | folded (`1 blocks folded`), inside the big fold when closed |
 | 19 long user input, legacy clamp | still exactly 3 lines + bottom gap (padding-free clamp box) |
 | 20 scroll to top with older history | auto-loads the next page (no click), once per scroll-to-top |
 | 21 mid-scroll / no history / loading | no auto-load |
@@ -288,7 +288,7 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
   model's titles or summary keys must be mirrored in `tool-row.ts`.
 - Diagnostics (model-retry, turn-error, turn-max-tokens, unknown,
   workflow-run) fold too, per the all-non-text rule — each behind an
-  expandable `1 个块已被折叠` bar, so failures stay reachable in one click.
+  expandable `1 blocks folded` bar, so failures stay reachable in one click.
 - Group identity = first member's stable node key. If older history is
   loaded that prepends a tool call *before* the current leader, leadership
   moves to the new first node and that group's expanded state resets.
