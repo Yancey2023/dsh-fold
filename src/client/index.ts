@@ -51,7 +51,7 @@ type LocaleFace = {
 }
 
 type SlotsService = {
-  inject(key: string, callback: () => unknown): unknown
+  inject?: (key: string, callback: () => unknown) => unknown
   register(options: Record<string, unknown>, component: unknown): unknown
   entries(key: string): Array<{ options: { key?: string; priority?: number }; component: unknown }>
 }
@@ -89,80 +89,30 @@ export function apply(ctx: {
   // 3. Stylesheet.
   ctx.effect(() => insertStyle(document), 'dsh-fold: styles')
 
-  // 4. Shadow the official tool-call renderer with the group view.
-  ctx.effect(
-    () =>
-      slots.register(
-        {
-          name: 'conversation.chat.node',
-          key: 'tool-call',
-          priority: -100,
-          locale: 'fold',
-          children: {
-            'tool.call.toolview': { kind: 'keyed', scope: 'session' },
-          },
-        },
-        ToolCallGroupView,
-      ) as () => void,
-    'dsh-fold: tool-call shadow',
-  )
+  const registerShadows = () => {
+    const disposers: Array<() => void> = []
+    const register = (options: Record<string, unknown>, component: unknown, label: string) => {
+      disposers.push(ctx.effect(() => slots.register(options, component) as () => void, label))
+    }
+    register({ name: 'conversation.chat.node', key: 'tool-call', priority: -100, locale: 'fold', children: { 'tool.call.toolview': { kind: 'keyed', scope: 'session' } } }, ToolCallGroupView, 'dsh-fold: tool-call shadow')
+    register({ name: 'conversation.chat.node', key: 'assistant-step', priority: -100, locale: 'conversation' }, AssistantNodeWrapper, 'dsh-fold: assistant-step shadow')
+    register({ name: 'conversation.chat.node', key: 'user', priority: -100, locale: 'conversation' }, UserNodeWrapper, 'dsh-fold: user shadow')
+    for (const key of ['compaction', 'context', 'manual-compaction', 'command', 'model-retry', 'turn-error', 'turn-max-tokens', 'unknown', 'workflow-run']) {
+      register({
+        name: 'conversation.chat.node', key, priority: -100, locale: 'conversation',
+        ...(key === 'command' ? { children: { 'conversation.chat.commandview': { kind: 'keyed', scope: 'session' } } } : {}),
+      }, NoticeNodeWrapper, `dsh-fold: ${key} shadow`)
+    }
+    return () => { for (const dispose of disposers.reverse()) dispose() }
+  }
 
-  // 5. Shadow the assistant-step cell: reasoning-only nodes fold with the
-  //    group; everything else delegates to the official AssistantNodeView
-  //    (conversation locale seat, no children).
-  ctx.effect(
-    () =>
-      slots.register(
-        {
-          name: 'conversation.chat.node',
-          key: 'assistant-step',
-          priority: -100,
-          locale: 'conversation',
-        },
-        AssistantNodeWrapper,
-      ) as () => void,
-    'dsh-fold: assistant-step shadow',
-  )
-
-  // 6. Shadow the user cell: long user input folds to 3 lines behind a
-  //    展开/收起 toggle. Conversation locale (the replica needs product keys
-  //    like image.label / copy / clock.md); the toggle labels come from the
-  //    shared fold translate.
-  ctx.effect(
-    () =>
-      slots.register(
-        {
-          name: 'conversation.chat.node',
-          key: 'user',
-          priority: -100,
-          locale: 'conversation',
-        },
-        UserNodeWrapper,
-      ) as () => void,
-    'dsh-fold: user shadow',
-  )
-
-  // 7. Shadow the non-text cells — automatic compaction, context injection,
-  //    manual compaction, user commands (/permission …), model-retry notices
-  //    (已重试模型请求), turn errors / max-token notices, unknown surfaces and
-  //    workflow runs: everything except plain text folds. `command`
-  //    re-declares the commandview child slot (the overlay treats the
-  //    identical spec as a shared co-declaration), so the official
-  //    CommandNodeView keeps its keyed command cards when expanded.
-  for (const key of ['compaction', 'context', 'manual-compaction', 'command', 'model-retry', 'turn-error', 'turn-max-tokens', 'unknown', 'workflow-run']) {
-    ctx.effect(
-      () =>
-        slots.register(
-          {
-            name: 'conversation.chat.node',
-            key,
-            priority: -100,
-            locale: 'conversation',
-            ...(key === 'command' ? { children: { 'conversation.chat.commandview': { kind: 'keyed', scope: 'session' } } } : {}),
-          },
-          NoticeNodeWrapper,
-        ) as () => void,
-      `dsh-fold: ${key} shadow`,
-    )
+  // `slots.inject` waits for declaration and owns the contribution lifecycle.
+  // Older hosts/mocks without it only support immediate registration.
+  if (typeof slots.inject === 'function') {
+    ctx.effect(() => slots.inject?.('conversation.chat.node', registerShadows), 'dsh-fold: chat shadow lifecycle')
+  } else {
+    // Compatibility path for older hosts that predate slots.inject. Those
+    // hosts supplied the chat slot before loading client plugins.
+    ctx.effect(registerShadows, 'dsh-fold: chat shadows')
   }
 }
