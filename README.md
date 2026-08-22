@@ -116,9 +116,9 @@ official primitives).
 
 ## DSH version
 
-Developed and verified against **DSH `0.1.0-rc.7`** (`dsh --version`).
-The runtime overlay is guarded by a method-text check and fails closed
-(plugin stays inert) on a different version.
+Developed and verified against **DSH `0.1.1-rc.2`** (`dsh --version`).
+The runtime overlay validates the live SlotCore shape and fails closed
+(plugin stays inert) if the relevant internals change.
 
 ## Architecture / extension seam
 

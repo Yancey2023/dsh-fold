@@ -2,7 +2,7 @@
  * Minimal type declarations for the DSH packages this plugin imports.
  *
  * The REAL contracts live in the installed DSH (verified against
- * 0.1.0-rc.7; see README's "Seam and data model" section). These shims keep
+ * 0.1.1-rc.2; see README's "Seam and data model" section). These shims keep
  * the repo typecheckable without a full DSH checkout; the runtime contract
  * is enforced by the DSH page itself (fail-closed guards in
  * slots-core-overlay.ts).
@@ -17,6 +17,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   export class SlotCore {
     records: Map<string, Record<string, unknown>>
     handleScopes: Map<unknown, { scope: string; count: number }>
+    entries(key: string): readonly { options: { key?: string; priority?: number }; component: unknown }[]
     register(options: {
       name: string
       priority?: number

@@ -24,7 +24,7 @@
 
 ## DSH 版本
 
-针对 **DSH `0.1.0-rc.7`**（`dsh --version`）开发并验证。运行时 overlay 带有方法文本校验，版本不符时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
+针对 **DSH `0.1.1-rc.2`**（`dsh --version`）开发并验证。运行时 overlay 在 SlotCore 结构变化时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
 
 ## 架构 / extension seam
 

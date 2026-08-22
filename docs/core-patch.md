@@ -1,6 +1,6 @@
 # Core patch (source level): shared child-slot declarations in `SlotCore`
 
-DSH `0.1.0-rc.7` · package `@deepseek-ai/dsh-client-ui-slots` · file `lib/index.js`
+DSH `0.1.1-rc.2` · package `@deepseek-ai/dsh-client-ui-slots` · file `lib/index.js`
 
 ## Why
 
