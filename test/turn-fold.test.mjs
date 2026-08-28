@@ -125,4 +125,61 @@ function snapshot(order, nodes, turnEnds) {
   assert.equal(turnProcessOf(s, 'c1'), null, 'no summary -> no big fold')
 }
 
+// ---------------------------------------------------------------------------
+// ALPHA (0.1.2): the adapter's chat face carries the closure map at
+// `chat.turnEnds` (flattened from `chat.legacy.turnEnds`) — the same
+// turnProcessOf input shape — and alpha locations expose `turn.status`.
+// ---------------------------------------------------------------------------
+
+// Alpha chat face with legacy turnEnds flattened into chat.turnEnds.
+{
+  const s = {
+    chat: {
+      order: ['t1', 'aSum'],
+      nodes: new Map([['t1', toolNode('t1', 1, settled('read'))], ['aSum', assistantNode('aSum', 1, [textBlock('总结')])]]),
+      turnEnds: new Map([[1, 999]]),
+    },
+  }
+  const info = turnProcessOf(s, 't1')
+  assert.ok(info, 'alpha chat face folds')
+  assert.equal(info.summaryKey, 'aSum')
+  assert.deepEqual([...info.keys], ['t1'], 'only the tool call folds')
+}
+
+// Alpha location boundary signal alone (no turnEnds map on the adapter face).
+// In the real snapshot every node of a turn shares the same TurnLocation
+// (status included); the seat querying the fold is a tool node here.
+{
+  const s = {
+    chat: {
+      order: ['t1', 'aSum'],
+      nodes: new Map([
+        ['t1', { key: 't1', kind: 'tool-call', location: { kind: 'step', turn: { turn: 1, status: 'closed' }, step: { step: 4 } }, data: { root: settled('read') } }],
+        ['aSum', { key: 'aSum', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1, status: 'closed' }, step: { step: 5 } }, data: { blocks: [textBlock('总结')], status: 'settled' } }],
+      ]),
+    },
+  }
+  const info = turnProcessOf(s, 't1')
+  assert.ok(info, 'closing via location turn status folds')
+  assert.equal(info.firstKey, 't1')
+}
+
+// The alpha turn-process controller belongs to the folded process span.
+{
+  const s = {
+    chat: {
+      order: ['t1', 'tp', 'aSum'],
+      nodes: new Map([
+        ['t1', toolNode('t1', 1, settled('read'))],
+        ['tp', { key: 'tp', kind: 'turn-process', location: { kind: 'turn', turn: { turn: 1, status: 'closed' } }, data: {} }],
+        ['aSum', assistantNode('aSum', 1, [textBlock('总结')])],
+      ]),
+      turnEnds: new Map([[1, 999]]),
+    },
+  }
+  const info = turnProcessOf(s, 't1')
+  assert.ok(info, 'turn-process controller folds with the span')
+  assert.deepEqual([...info.keys], ['t1', 'tp'], "controller is part of the span (its seat is the product's own)")
+}
+
 console.log('turn-fold.test: all assertions passed')

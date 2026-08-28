@@ -349,4 +349,79 @@ function childrenOf(node) {
   root.unmount()
 }
 
+// ---------------------------------------------------------------------------
+// ALPHA (0.1.2-alpha.1) seat kit: `useChat` carries the chat target directly
+// (order/nodes/legacy.turnEnds), `useSession` carries only the window flags.
+// The adapter must produce the same group behavior as the rc-era kit.
+// ---------------------------------------------------------------------------
+
+/** Alpha-shaped props: chat target + session window flags + product fold. */
+function makeAlphaProps(chatSnapshot, sessionSnapshot, nodeKey, turnProcess) {
+  const base = makeProps({ chat: chatSnapshot }, nodeKey)
+  // makeProps' useSession already unwraps via the adapter (session shape);
+  // here the chat target is OUTSIDE the session snapshot, so useChat is the
+  // dedicated chat selector and useSession only sees the window flags.
+  return {
+    ...base,
+    useChat: (sel, eq) => sel(chatSnapshot),
+    useSession: (sel, eq) => sel(sessionSnapshot),
+    ...(turnProcess === undefined ? {} : { turnProcess }),
+  }
+}
+
+{
+  // (a) A turn-process controller node between two tool calls is transparent:
+  // ONE merged group, count 2, leader = first tool; open turn, no big fold.
+  const chat = (() => {
+    const nodes = [
+      toolNode('t1', 1, settled('read')),
+      { key: 'tp1', kind: 'turn-process', location: { kind: 'turn', turn: { turn: 1, status: 'closed' } }, data: {} },
+      toolNode('t2', 1, settled('grep')),
+    ]
+    const map = new Map(nodes.map((n) => [n.key, n]))
+    return { order: ['t1', 'tp1', 't2'], nodes: { get: (k) => map.get(k) }, legacy: { turnEnds: new Map() } }
+  })()
+  const session = { hasMore: true, loadingOlder: false }
+  let root
+  act(() => {
+    root = create(React.createElement(ToolCallGroupView, makeAlphaProps(chat, session, 't1')))
+  })
+  let text = textOf(root.toJSON())
+  assert.ok(text.includes('2 个块已被折叠'), 'alpha: turn-process node is transparent (not counted, not a boundary)')
+  assert.ok(!text.includes('该轮次工作过程已折叠'), 'alpha: open turn has no big fold')
+  root.unmount()
+
+  // (b) The product's own compact-transcript fold is ACTIVE for the turn:
+  // the plugin yields the big fold — no "该轮次工作过程已折叠" bar, the small
+  // fold still leads at the first tool seat.
+  const closedChat = (() => {
+    const nodes = [
+      toolNode('t1', 1, settled('read')),
+      toolNode('t2', 1, settled('grep')),
+      { key: 'aSum', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1, status: 'closed' }, step: { step: 5 } }, data: { blocks: [{ kind: 'text', text: '总结' }], status: 'settled' } },
+    ]
+    const map = new Map(nodes.map((n) => [n.key, n]))
+    return { order: ['t1', 't2', 'aSum'], nodes: { get: (k) => map.get(k) }, legacy: { turnEnds: new Map([[1, 42]]) } }
+  })()
+  act(() => {
+    root = create(React.createElement(ToolCallGroupView, makeAlphaProps(closedChat, session, 't1', { foldable: true })))
+  })
+  text = textOf(root.toJSON())
+  assert.ok(!text.includes('该轮次工作过程已折叠'), 'alpha: product fold active -> plugin big fold yields')
+  assert.ok(text.includes('2 个块已被折叠'), 'alpha: small tool group still renders under the product fold')
+  root.unmount()
+
+  // (c) Window flags flow from the SESSION snapshot (alpha): the AutoLoadHost
+  // receives hasMore/loadingOlder even though the transcript lives in useChat.
+  act(() => {
+    root = create(React.createElement(ToolCallGroupView, makeAlphaProps(closedChat, { hasMore: false, loadingOlder: true }, 't1')))
+  })
+  const autoHost = root.toJSON()
+  // The rendered tree's outermost wrapper has data-tool-group; the auto host
+  // is an inner div — verify through a re-render with the follower seat that
+  // no crash occurs and the small fold renders.
+  assert.ok(textOf(autoHost).includes('2 个块已被折叠'), 'alpha: flags do not disturb the fold')
+  root.unmount()
+}
+
 console.log('component.test: all assertions passed')

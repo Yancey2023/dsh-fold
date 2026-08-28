@@ -29,7 +29,7 @@ import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { AssistantNodeWrapper, setSlotsService } from './AssistantNodeWrapper'
 import { setGroupT } from './translate'
 import { setSessionsService } from './auto-load'
-import { setConversationT } from './registry'
+import { compositeT, setChatT, setConversationT } from './registry'
 import { ToolCallGroupView } from './ToolCallGroupView'
 import { UserNodeWrapper } from './UserNodeWrapper'
 import { NoticeNodeWrapper } from './NoticeNodeWrapper'
@@ -77,11 +77,24 @@ export function apply(ctx: {
   setSessionsService(ctx.get('sessions') as { scope(id: string): { get(name: string): unknown } | undefined } | undefined)
   // 1d. The conversation-namespace translate is the fallback for every
   //     official cell view that renders inside a folded group (model-retry,
-  //     context injection, compaction, …). The seat wrappers override it
-  //     with their own t, but the fallback ensures it's never undefined
-  //     even when the first visible seat is a tool-call (e.g. loaded window
-  //     starting mid-turn).
-  if (locale !== undefined) setConversationT(locale.bind('conversation'))
+  //     context injection, compaction, …), as is the chat namespace: alpha
+  //     0.1.2 moved the chat-cell dictionary out of `conversation` into
+  //     `chat`, rc keeps it in `conversation`. The probe detects which
+  //     namespace actually translates a chat-cell key, and the delegate
+  //     wrappers resolve through `compositeT` so both releases render
+  //     properly. Dictionary registration precedes this plugin's apply in
+  //     the boot graph, so the probe sees the host's dictionaries.
+  if (locale !== undefined) {
+    const chatProbeKey = 'message.extraBlock'
+    const chatProbe = locale.bind('chat')(chatProbeKey)
+    const chatT = chatProbe !== chatProbeKey ? locale.bind('chat') : undefined
+    setChatT(chatT)
+    // The stashed conversation translate doubles as the DEFAULT translate
+    // for official cell views rendered inside folded groups; alpha's chat
+    // namespace takes precedence there, conversation supplies the image
+    // labels. Seat wrappers override the stash with their own composite.
+    setConversationT(compositeT(chatT, locale.bind('conversation')))
+  }
 
   // 2. Locale dictionaries.
   ctx.effect(() => locale.register('fold', DICTS), 'dsh-fold: dictionaries')
@@ -96,7 +109,11 @@ export function apply(ctx: {
     }
     register({ name: 'conversation.chat.node', key: 'tool-call', priority: -100, locale: 'fold', children: { 'tool.call.toolview': { kind: 'keyed', scope: 'session' } } }, ToolCallGroupView, 'dsh-fold: tool-call shadow')
     register({ name: 'conversation.chat.node', key: 'assistant-step', priority: -100, locale: 'conversation' }, AssistantNodeWrapper, 'dsh-fold: assistant-step shadow')
-    register({ name: 'conversation.chat.node', key: 'user', priority: -100, locale: 'conversation' }, UserNodeWrapper, 'dsh-fold: user shadow')
+    // `steering` (mid-turn user messages) renders the product's user view
+    // too; folding long steering messages is the same 3-line clamp.
+    for (const key of ['user', 'steering']) {
+      register({ name: 'conversation.chat.node', key, priority: -100, locale: 'conversation' }, UserNodeWrapper, `dsh-fold: ${key} shadow`)
+    }
     for (const key of ['compaction', 'context', 'manual-compaction', 'command', 'model-retry', 'turn-error', 'turn-max-tokens', 'unknown', 'workflow-run']) {
       register({
         name: 'conversation.chat.node', key, priority: -100, locale: 'conversation',

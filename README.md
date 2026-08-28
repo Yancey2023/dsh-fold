@@ -116,9 +116,15 @@ official primitives).
 
 ## DSH version
 
-Developed and verified against **DSH `0.1.1-rc.2`** (`dsh --version`).
-The runtime overlay validates the live SlotCore shape and fails closed
-(plugin stays inert) if the relevant internals change.
+Adapted to **DSH `0.1.2-alpha.1`** (`useChat` chat target, `chat.legacy.
+turnEnds`, the `turn-process` controller node, product compact-transcript
+fold) while staying compatible with the current release **DSH `0.1.1-rc.2`**
+(cells bind the `conversation` namespace, snapshot carries `useSession`.
+`chat`, no `status`/`turn-process`). The version differences are sealed in
+`src/client/snapshot-face.ts` (snapshot normalization) and
+`src/client/registry.ts` (`compositeT` namespace fallback); the runtime
+overlay validates the live SlotCore shape and fails closed (plugin stays
+inert) if the relevant internals change.
 
 ## Architecture / extension seam
 
@@ -307,6 +313,7 @@ src/client/turn-fold.ts           turn-level big fold over the snapshot (unit-te
 src/client/tool-row.ts            running-tool row model (product toolRowModel replica)
 src/client/auto-load.ts           scroll-to-top auto-load-older (sessions scope)
 src/client/AutoLoadHost.tsx       seat ref anchor wiring seats into the auto-loader
+src/client/snapshot-face.ts       release-agnostic snapshot adapter (rc + alpha)
 src/client/ToolCallGroupView.tsx  group row (live block content) + official members
 src/client/AssistantNodeWrapper.tsx assistant-step shadow (official delegation)
 src/client/UserNodeWrapper.tsx    user bubble replica + 3-line clamp + toggle

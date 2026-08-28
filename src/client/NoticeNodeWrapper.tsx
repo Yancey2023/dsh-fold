@@ -20,12 +20,14 @@
 
 import * as React from 'react'
 import type { ChatNodeLike } from './group'
-import { eqGroup, groupOf, isGroupLeader, isInlineNoticeNode, latestWorkNode } from './group'
+import { groupOf, isGroupLeader, isInlineNoticeNode, latestWorkNode } from './group'
 import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
 import type { ToolGroup } from './group'
 import { AutoLoadHost } from './AutoLoadHost'
-import { eqTurnProcess, isProcessNode, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
-import { officialNodeEntry, setConversationT } from './registry'
+import { useSnapshotFace } from './snapshot-face'
+import type { SelectorHook } from './snapshot-face'
+import { isProcessNode, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
+import { compositeT, getChatT, officialNodeEntry, setConversationT } from './registry'
 import type { TranslateLike } from './registry'
 import { getGroupT } from './translate'
 export { setSlotsService } from './registry'
@@ -50,20 +52,16 @@ export const NOTICE_KINDS = new Set([
 export interface NoticeNodeWrapperProps {
   /** The node owned by this seat. */
   node: ChatNodeLike
-  /** Framework session selector hook. */
-  useSession: <S>(
-    sel: (snapshot: {
-      chat: { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } }
-      turnEnds?: ReadonlyMap<number, number>
-      hasMore?: boolean
-      loadingOlder?: boolean
-    }) => S,
-    eq?: (a: S, b: S) => boolean,
-  ) => S
+  /** Framework session selector hook (window flags; on rc also the chat). */
+  useSession?: SelectorHook
+  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  useChat?: SelectorHook
   /** Session id (big-fold state is keyed per session). */
   sessionId?: string
   /** Child-slot dispatch face (only the `command` seat declares children). */
   renderSlot?: (key: string, owner: unknown, opts: { entryKey: string; fallback?: React.ReactNode }) => React.ReactNode
+  /** Alpha owner kit: the product's own turn-process controller. */
+  turnProcess?: { foldable?: boolean }
   /** Everything else the renderer passed (delegated to the official view). */
   [key: string]: unknown
 }
@@ -78,11 +76,20 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   const { node, useSession, sessionId } = props
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
-  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
-  const inlineGroup = useSession((snapshot) => (isInlineNoticeNode(node) ? groupOf(snapshot.chat, node.key) : null), eqGroup)
-  const live = useSession((snapshot) => latestWorkNode(snapshot.chat))
-  const hasMore = useSession((snapshot) => snapshot.hasMore === true)
-  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
+  const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
+  // Alpha 0.1.2's own compact-transcript turn folding is active for this
+  // turn: yield the big fold entirely to the product (no double bars); the
+  // small inline folds stay ours.
+  const productFoldActive = props.turnProcess?.foldable === true
+  const turnInfo = React.useMemo(
+    () => (productFoldActive ? null : turnProcessOf(chat, node.key)),
+    [chat, node, productFoldActive],
+  )
+  const inlineGroup = React.useMemo(
+    () => (isInlineNoticeNode(node) ? groupOf(chat, node.key) : null),
+    [chat, node],
+  )
+  const live = React.useMemo(() => latestWorkNode(chat), [chat])
   const [expanded, setExpanded] = React.useState(false)
   const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
@@ -108,7 +115,8 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   )
 
   const t = getGroupT() ?? ((key: string, params?: Record<string, unknown>) => (params && 'count' in params ? String(params.count) : key))
-  setConversationT(((typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) as TranslateLike | undefined)
+  const seatT = (typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined
+  setConversationT(compositeT(getChatT(), seatT))
 
   let output: React.ReactNode
   // Fail-soft: only act on the notice kinds this wrapper owns.
@@ -168,7 +176,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
       // instead of a dead bar.
       return React.createElement(FoldedSeat, null)
     }
-    const conversationT = (typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined
+    const conversationT = compositeT(getChatT(), seatT)
     return React.createElement(
       'div',
       { className: 'dshToolGroup', 'data-tool-group': '', 'data-notice': '' } as unknown as React.HTMLAttributes<HTMLDivElement>,

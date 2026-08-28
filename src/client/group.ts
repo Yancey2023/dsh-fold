@@ -37,13 +37,20 @@ export interface ChatNodeLike {
   readonly kind: string
   readonly location?: {
     readonly kind: 'turn' | 'step' | 'unresolved'
-    readonly turn?: { readonly turn: number }
+    readonly turn?: {
+      readonly turn: number
+      /** Resolved turn boundary (alpha 0.1.2 exposes `closed`; absent on rc). */
+      readonly status?: 'open' | 'closed' | 'unknown'
+    }
   }
   readonly data?: {
     readonly root?: ToolBlockLike
     /** Assistant payload: blocks are the step's content (text/reasoning/tool-call/...). */
     readonly blocks?: readonly AssistantBlockLike[]
+    /** Lifecycle signal (alpha 0.1.2; absent on rc 0.1.1). */
     readonly status?: 'running' | 'settled' | 'interrupted'
+    /** rc 0.1.1 streaming signal: the durable final node is absent while the step streams. */
+    readonly final?: unknown
   }
 }
 
@@ -118,6 +125,14 @@ export interface ToolGroup {
 
 const TOOL_KIND = 'tool-call'
 const ASSISTANT_KIND = 'assistant-step'
+
+/**
+ * Alpha 0.1.2's turn-process CONTROLLER node: the product projects one per
+ * closed turn (its compact-transcript disclosure bar). It is a hidden
+ * controller, never a rendered member — it must neither split a tool run nor
+ * count as a folded block, and it must not become a group leader.
+ */
+export const TURN_PROCESS_NODE_KIND = 'turn-process'
 
 export function turnOf(node: ChatNodeLike): number | undefined {
   const loc = node.location
@@ -198,11 +213,15 @@ export function latestWorkNode(snapshot: GroupSnapshotLike): ChatNodeLike | unde
 }
 
 /** Whether a work node is still running/streaming (as opposed to settled):
- * a tool call without a result, or an assistant step in `running` state. */
+ * a tool call without a result, or an assistant step in `running` state.
+ * rc 0.1.1 has no `status` field — a step streams while its durable `final`
+ * node is still absent, so that state counts as running too. */
 export function isLiveWorkNode(node: ChatNodeLike | undefined): boolean {
   if (node === undefined) return false
   if (node.kind === TOOL_KIND) return isRunningBlock(node.data?.root)
-  return node.data?.status === 'running'
+  const status = node.data?.status
+  if (status !== undefined) return status === 'running'
+  return node.data?.final === undefined
 }
 
 /** Wire tool name from either lifecycle form. */
@@ -211,11 +230,13 @@ export function callName(block: ToolBlockLike): string {
 }
 
 /** A node continues the current run (same turn): a tool call, a transparent
- * think row, or any inline notice — folded in with the adjacent work, never
- * splitting a chain into separate bars. */
+ * think row, a turn-process controller (alpha: transparent, never splits),
+ * or any inline notice — folded in with the adjacent work, never splitting a
+ * chain into separate bars. */
 function continuesRun(node: ChatNodeLike, anchor: ChatNodeLike): boolean {
   if (!sameTurn(node, anchor)) return false
-  return node.kind === TOOL_KIND || isTransparentAssistant(node) || isInlineNoticeNode(node)
+  return node.kind === TOOL_KIND || node.kind === TURN_PROCESS_NODE_KIND
+    || isTransparentAssistant(node) || isInlineNoticeNode(node)
 }
 
 /**
@@ -250,6 +271,9 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   for (const key of keys) {
     const member = snapshot.nodes.get(key)
     if (member === undefined) continue
+    // The turn-process controller (alpha) is flow-transparent: it extends the
+    // run but renders nothing and never counts as a folded block.
+    if (member.kind === TURN_PROCESS_NODE_KIND) continue
     const transparent: boolean = isTransparentAssistant(member)
     if (member.kind === TOOL_KIND) {
       if (firstToolKey === undefined) firstToolKey = key
@@ -261,8 +285,17 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
     }
   }
   // Leader: the first TOOL when the run has tools (its seat owns the bar),
-  // otherwise the first transparent node (think-only group).
-  const leaderKey = firstToolKey ?? keys[0]
+  // otherwise the first real member — never the turn-process controller.
+  let leaderKey = firstToolKey
+  if (leaderKey === undefined) {
+    for (const key of keys) {
+      const member = snapshot.nodes.get(key)
+      if (member !== undefined && member.kind !== TURN_PROCESS_NODE_KIND) {
+        leaderKey = key
+        break
+      }
+    }
+  }
   if (leaderKey === undefined) return null
   let running: ToolBlockLike | undefined
   let runningToolItem: GroupItem | undefined
@@ -270,7 +303,7 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   for (const item of items) {
     if (item.kind !== 'tool') {
       // Think rows stream while their assistant step is running.
-      if (runningThinkItem === undefined && item.node.data?.status === 'running') runningThinkItem = item
+      if (runningThinkItem === undefined && isLiveWorkNode(item.node)) runningThinkItem = item
       continue
     }
     const block = item.node.data?.root

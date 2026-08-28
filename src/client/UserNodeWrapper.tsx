@@ -36,7 +36,17 @@ import type { MessageImageLabels } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { getGroupT } from './translate'
 import { AutoLoadHost } from './AutoLoadHost'
-import { setConversationT } from './registry'
+import { compositeT, getChatT, setConversationT } from './registry'
+import { useSnapshotFace } from './snapshot-face'
+import type { SelectorHook } from './snapshot-face'
+
+/** One image source the alpha renderMessageImages owner accepts (attachment arm). */
+export type MessageImageSourceLike =
+  | { readonly attachment: ImageAttachmentRef }
+  | { readonly preview: { readonly url: string; readonly name?: string; readonly width?: number; readonly height?: number } }
+
+/** The alpha owner's image-gallery renderer (slot-backed; absent on rc). */
+export type RenderMessageImages = (owner: { images: readonly MessageImageSourceLike[]; align: string }) => React.ReactNode
 
 export interface UserNodeWrapperProps {
   /** The user node owned by this seat. */
@@ -44,14 +54,18 @@ export interface UserNodeWrapperProps {
     key: string
     data?: { content?: unknown; time?: number }
   }
-  /** Session-authorized image URL loader (owner kit). */
+  /** Session-authorized image URL loader (rc-era owner kit). */
   loadImage?: (attachment: ImageAttachmentRef) => Promise<string>
+  /** Alpha owner kit: render the image gallery through the product's slot. */
+  renderMessageImages?: RenderMessageImages
   /** Conversation-namespace translate (entry locale `conversation`). */
   t?: (key: string, params?: Record<string, unknown>) => string
   /** Session id (big-fold state is keyed per session; auto-load scope). */
   sessionId?: string
-  /** Framework session selector hook. */
-  useSession: <S>(sel: (snapshot: { hasMore?: boolean; loadingOlder?: boolean }) => S, eq?: (a: S, b: S) => boolean) => S
+  /** Framework session selector hook (window flags; on rc also the chat). */
+  useSession?: SelectorHook
+  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  useChat?: SelectorHook
   /** Everything else the renderer passed (unused, but must be accepted). */
   [key: string]: unknown
 }
@@ -168,9 +182,13 @@ function CopyAction({ text, t }: { text: string; t: Translate }): React.ReactEle
 
 /** The user seat: product bubble replica + 3-line clamp + fold toggle. */
 export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNodeWrapperProps): React.ReactElement | null {
-  const { node, loadImage, t, sessionId, useSession } = props
-  // The user seat binds the CONVERSATION namespace (product keys).
-  setConversationT(typeof t === 'function' ? t : undefined)
+  const { node, loadImage, renderMessageImages, t, sessionId } = props
+  const seatT = typeof t === 'function' ? t : undefined
+  // The user seat binds the CONVERSATION namespace (product keys). On alpha
+  // the cell dictionary moved to `chat` — the composite resolves chat-first
+  // (clock/json/message keys) and conversation-second (image labels).
+  const translate = compositeT(getChatT(), seatT)
+  setConversationT(translate)
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const [expanded, setExpanded] = React.useState(false)
@@ -190,15 +208,13 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
     return () => observer.disconnect()
   }, [expanded])
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
-  const hasMore = typeof useSession === 'function' ? useSession((snapshot) => snapshot.hasMore === true) : false
-  const loadingOlder = typeof useSession === 'function' ? useSession((snapshot) => snapshot.loadingOlder === true) : false
+  const { hasMore, loadingOlder } = useSnapshotFace(props)
 
   const data = (node.data ?? {}) as { content?: unknown; time?: number }
   const rawContent = data.content
   const content = Array.isArray(rawContent) ? rawContent : typeof rawContent === 'string' ? [{ type: 'text', text: rawContent }] : []
   const { text, images, rest } = contentParts(content)
   const showBubble = text !== '' || rest.length > 0
-  const translate = t ?? NOOP_T
   const toolT = getGroupT() ?? translate
   const labels = imageLabels(translate)
   const showToggle = expanded || overflowing
@@ -210,12 +226,14 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
       'div',
       { className: 'dshUserStack' },
       images.length > 0
-        ? React.createElement(ImageGallery, {
-            images,
-            load: loadImage ?? (() => Promise.reject(new Error('image loader unavailable'))),
-            align: 'end',
-            labels,
-          })
+        ? typeof renderMessageImages === 'function'
+          ? renderMessageImages({ images, align: 'end' })
+          : React.createElement(ImageGallery, {
+              images,
+              load: loadImage ?? (() => Promise.reject(new Error('image loader unavailable'))),
+              align: 'end',
+              labels,
+            })
         : null,
       showBubble
         ? React.createElement(

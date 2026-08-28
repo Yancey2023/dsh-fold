@@ -24,7 +24,13 @@
 
 ## DSH 版本
 
-针对 **DSH `0.1.1-rc.2`**（`dsh --version`）开发并验证。运行时 overlay 在 SlotCore 结构变化时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
+同时适配 **DSH `0.1.2-alpha.1`**（`useChat` 聊天快照、`chat.legacy.
+turnEnds`、`turn-process` 控制器节点、产品自带的紧凑转录折叠）与当前发布版
+**DSH `0.1.1-rc.2`**（cell 绑定 `conversation` 命名空间、快照经
+`useSession.chat`、无 `status`/`turn-process`）。版本差异封闭在
+`src/client/snapshot-face.ts`（快照归一化）与 `src/client/registry.ts`
+（`compositeT` 命名空间兜底）两个模块中；运行时 overlay 在 SlotCore 结构
+变化时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
 
 ## 架构 / extension seam
 
@@ -147,11 +153,12 @@ src/client/turn-fold.ts          轮次级大折叠（有单测）
 src/client/tool-row.ts           运行中工具行模型（产品 toolRowModel 复刻）
 src/client/auto-load.ts          滑顶自动加载更早（sessions 作用域）
 src/client/AutoLoadHost.tsx      座位 ref 锚点，接入自动加载器
+src/client/snapshot-face.ts      rc + alpha 双版本快照适配层
 src/client/ToolCallGroupView.tsx 组行（真实块内容）+ 官方成员渲染
 src/client/AssistantNodeWrapper.tsx assistant-step 阴影（委托官方）
 src/client/UserNodeWrapper.tsx   用户气泡复刻 + 3 行钳制 + 展开/收起
 src/client/NoticeNodeWrapper.tsx compaction/context/manual-compaction/command 阴影
-src/client/registry.ts           委托用的共享实时注册表访问
+src/client/registry.ts           委托用的共享实时注册表访问 + 命名空间兜底（compositeT）
 src/client/translate.ts          共享 fold 翻译槽
 src/client/slots-core-overlay.ts 可逆 SlotCore overlay（对应 docs/core-patch.md）
 src/client/styles.ts             主题变量 CSS
@@ -161,7 +168,7 @@ src/host/index.ts                最小 host 锚点
 cordis.patch.yml                 bundle patch 层（host 行）
 build.mjs                        tsc + esbuild
 scripts/install-dsh.cjs          安装/卸载脚本
-test/                            分组 · tool-row · 自动加载 · 大折叠 · overlay · bundle 冒烟 · 渲染套件
+test/                            分组 · tool-row · 快照适配 · 自动加载 · 大折叠 · overlay · bundle 冒烟 · 渲染套件
 docs/core-patch.md               唯一 core 改动（源码级 patch）
 ```
 

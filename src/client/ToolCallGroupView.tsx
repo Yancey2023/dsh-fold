@@ -32,12 +32,14 @@ import {
   IconQuestionOutline14,
   IconThinkOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { callName, eqGroup, groupOf, isGroupLeader, isLiveWorkNode, isRunningBlock, isTransparentAssistant, latestWorkNode } from './group'
+import { callName, groupOf, isGroupLeader, isLiveWorkNode, isRunningBlock, isTransparentAssistant, latestWorkNode } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
 import { runningToolRow } from './tool-row'
 import { AutoLoadHost } from './AutoLoadHost'
 import { getConversationT, officialNodeEntry } from './registry'
-import { eqTurnProcess, isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
+import { useSnapshotFace } from './snapshot-face'
+import type { SelectorHook } from './snapshot-face'
+import { isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
 type RenderSlot = (
@@ -59,16 +61,10 @@ export interface ToolCallOwnerProps {
 export interface ToolCallGroupViewProps {
   /** The tool-call node owned by this seat. */
   node: ChatNodeLike
-  /** Framework session selector hook. */
-  useSession: <S>(
-    sel: (snapshot: {
-      chat: { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } }
-      turnEnds?: ReadonlyMap<number, number>
-      hasMore?: boolean
-      loadingOlder?: boolean
-    }) => S,
-    eq?: (a: S, b: S) => boolean,
-  ) => S
+  /** Framework session selector hook (window flags; on rc also the chat). */
+  useSession?: SelectorHook
+  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  useChat?: SelectorHook
   /** Child-slot dispatch face (declared via this entry's children table). */
   renderSlot: RenderSlot
   /** Selected call id (details panel highlight). */
@@ -81,6 +77,8 @@ export interface ToolCallGroupViewProps {
   t: (key: string, params?: Record<string, unknown>) => string
   /** Session id (big-fold state is keyed per session). */
   sessionId?: string
+  /** Alpha owner kit: the product's own turn-process controller. */
+  turnProcess?: { foldable?: boolean }
 }
 
 /** Minimal fallback for tool names without a registered `tool.call.toolview` entry. */
@@ -244,7 +242,7 @@ function ThinkItem({ item, t }: { item: GroupItem & { kind: 'think' }; t: ToolCa
   const blocks = item.node.data?.blocks ?? []
   const reasoning = blocks.filter((block) => block.kind === 'reasoning' && (block.text ?? '').trim() !== '')
   if (reasoning.length === 0) return null
-  const running = item.node.data?.status === 'running'
+  const running = isLiveWorkNode(item.node)
   return React.createElement(
     React.Fragment,
     null,
@@ -467,11 +465,17 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t, sessionId } = props
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
-  const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup)
-  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess)
-  const live = useSession((snapshot) => latestWorkNode(snapshot.chat))
-  const hasMore = useSession((snapshot) => snapshot.hasMore === true)
-  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true)
+  const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
+  // Alpha 0.1.2's own compact-transcript turn folding is active for this
+  // turn: yield the big fold entirely to the product (no double bars); the
+  // small tool/think groups stay ours.
+  const productFoldActive = props.turnProcess?.foldable === true
+  const group = React.useMemo(() => groupOf(chat, node.key), [chat, node])
+  const turnInfo = React.useMemo(
+    () => (productFoldActive ? null : turnProcessOf(chat, node.key)),
+    [chat, node, productFoldActive],
+  )
+  const live = React.useMemo(() => latestWorkNode(chat), [chat])
   const conversationT = getConversationT()
   const [expanded, setExpanded] = React.useState(false)
   const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)

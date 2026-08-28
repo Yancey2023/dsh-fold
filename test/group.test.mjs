@@ -4,7 +4,7 @@
  * transparency rule.
  */
 import assert from 'node:assert/strict'
-import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant, latestWorkNode } from '../lib/client-group.mjs'
+import { groupOf, isGroupLeader, isRunningBlock, callName, eqGroup, isTransparentAssistant, latestWorkNode, isLiveWorkNode } from '../lib/client-group.mjs'
 
 /** Build a snapshot node. */
 function toolNode(key, turn, root) {
@@ -432,6 +432,78 @@ function snapshot(order, nodes) {
     [toolNode('t1', 1, settled('bash')), assistantNode('aTxt', 1, [textBlock('正在写正文...')], 'running')],
   )
   assert.equal(latestWorkNode(s), undefined, 'streaming text clears the bar')
+}
+
+// ---------------------------------------------------------------------------
+// ALPHA (0.1.2): the turn-process controller node is flow-TRANSPARENT.
+// It sits between work in every closed turn; it must neither split a run,
+// nor count as a folded block, nor become the group leader.
+// ---------------------------------------------------------------------------
+
+// Two tool calls + a think row with the controller between them: ONE group.
+{
+  const s = snapshot(
+    ['t1', 'tp', 't2', 'aTh'],
+    [
+      toolNode('t1', 1, settled('read')),
+      { key: 'tp', kind: 'turn-process', location: { kind: 'turn', turn: { turn: 1, status: 'closed' } }, data: {} },
+      toolNode('t2', 1, settled('grep')),
+      assistantNode('aTh', 1, [think('reasoning')], 'settled'),
+    ],
+  )
+  const g = groupOf(s, 't2')
+  assert.ok(g, 'group still forms across the controller')
+  assert.equal(g.count, 3, 'controller is not counted (read+grep+think)')
+  assert.equal(g.leaderKey, 't1', 'leader is the first tool')
+  assert.ok(g.items.every((it) => it.node.kind !== 'turn-process'), 'controller never becomes a folded item')
+}
+
+// A run that is ONLY the controller has no foldable member -> no group.
+{
+  const s = snapshot(
+    ['tp'],
+    [{ key: 'tp', kind: 'turn-process', location: { kind: 'turn', turn: { turn: 1, status: 'closed' } }, data: {} }],
+  )
+  assert.equal(groupOf(s, 'tp'), null, 'controller seat itself is never a group')
+}
+
+// ---------------------------------------------------------------------------
+// RC (0.1.1): assistant data has NO `status`; a step streams while its
+// durable `final` node is absent. isLiveWorkNode must treat that as running.
+// ---------------------------------------------------------------------------
+
+// rc-era streaming think: status undefined, final undefined -> live.
+{
+  const node = {
+    key: 'a1',
+    kind: 'assistant-step',
+    location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } },
+    data: { blocks: [think('streaming...')] },
+  }
+  assert.equal(isLiveWorkNode(node), true, 'no status + no final = streaming (rc)')
+}
+
+// rc-era settled think: final present -> not live.
+{
+  const node = {
+    key: 'a1',
+    kind: 'assistant-step',
+    location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } },
+    data: { blocks: [think('done')], final: {} },
+  }
+  assert.equal(isLiveWorkNode(node), false, 'final present = settled (rc)')
+}
+
+// rc-era streamING text: still clears the folded bar.
+{
+  const s = snapshot(
+    ['t1', 'aTxt'],
+    [
+      toolNode('t1', 1, settled('bash')),
+      { key: 'aTxt', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 2 } }, data: { blocks: [textBlock('写正文...')] } },
+    ],
+  )
+  assert.equal(latestWorkNode(s), undefined, 'rc streaming text clears the bar')
 }
 
 console.log('group.test: all assertions passed')
