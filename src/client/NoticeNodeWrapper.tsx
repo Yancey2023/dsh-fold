@@ -80,7 +80,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   // Alpha 0.1.2's own compact-transcript turn folding is active for this
   // turn: yield the big fold entirely to the product (no double bars); the
   // small inline folds stay ours.
-  const productFoldActive = props.turnProcess?.foldable === true
+  const productFoldActive = props.turnProcess !== undefined
   const turnInfo = React.useMemo(
     () => (productFoldActive ? null : turnProcessOf(chat, node.key)),
     [chat, node, productFoldActive],

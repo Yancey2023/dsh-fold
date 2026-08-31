@@ -98,9 +98,8 @@ setSlotsService({
   const root = create(React.createElement(AssistantNodeWrapper, makeProps(snapshot, 'a1')))
   const text = textOf(root.toJSON())
   assert.ok(text.includes('1 个块已被折叠'), 'standalone think row folds into a bar')
-  // The settled think is the conversation's LATEST activity, so its bar shows
-  // it (Think · first line) instead of hiding it.
-  assert.ok(text.includes('Think') && text.includes('standalone'), 'settled think stays as the latest activity')
+  // A settled think remains folded but no longer occupies the live left side.
+  assert.ok(!text.includes('Think') && !text.includes('standalone'), 'settled think leaves the folded bar empty')
   // expand -> think row shown
   act(() => {
     root.toJSON().props.onClick()

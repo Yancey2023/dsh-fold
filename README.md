@@ -116,7 +116,7 @@ official primitives).
 
 ## DSH version
 
-Adapted to **DSH `0.1.2-alpha.1`** (`useChat` chat target, `chat.legacy.
+Adapted to **DSH `0.1.2-alpha.2`** (`useChat` chat target, `chat.legacy.
 turnEnds`, the `turn-process` controller node, product compact-transcript
 fold) while staying compatible with the current release **DSH `0.1.1-rc.2`**
 (cells bind the `conversation` namespace, snapshot carries `useSession`.

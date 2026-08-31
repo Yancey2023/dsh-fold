@@ -24,7 +24,7 @@
 
 ## DSH 版本
 
-同时适配 **DSH `0.1.2-alpha.1`**（`useChat` 聊天快照、`chat.legacy.
+同时适配 **DSH `0.1.2-alpha.2`**（`useChat` 聊天快照、`chat.legacy.
 turnEnds`、`turn-process` 控制器节点、产品自带的紧凑转录折叠）与当前发布版
 **DSH `0.1.1-rc.2`**（cell 绑定 `conversation` 命名空间、快照经
 `useSession.chat`、无 `status`/`turn-process`）。版本差异封闭在

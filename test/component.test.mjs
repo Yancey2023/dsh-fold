@@ -101,16 +101,14 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// Case 3: all settled -> the LATEST completed block STAYS shown on the left
-// (the conversation's latest activity, not just the running one).
+// Case 3: all settled -> left side is empty immediately.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['t1', 't2', 't3'], [toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('grep')), toolNode('t3', 1, settled('bash'))])
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
   assert.ok(!text.includes('正在运行'), 'no running label (visually hidden label only while live-running)')
-  assert.ok(!text.includes('read') && !text.includes('grep'), 'only the LATEST block shows')
-  assert.ok(text.includes('Bash'), 'the finished bash STAYS shown as the latest activity')
+  assert.ok(!text.includes('read') && !text.includes('grep') && !text.includes('Bash'), 'no completed block remains on the left')
   assert.equal(root.toJSON().props['data-state'], 'settled', 'no sweep once settled')
   assert.ok(text.includes('3 个块已被折叠'), 'folded label 3')
   root.unmount()
@@ -227,6 +225,7 @@ function childrenOf(node) {
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
   assert.ok(!text.includes('正在运行'), 'error ended the chain')
+  assert.ok(!text.includes('Bash'), 'failed completed block is absent from the left')
   assert.ok(text.includes('2 个块已被折叠'))
   root.unmount()
 }

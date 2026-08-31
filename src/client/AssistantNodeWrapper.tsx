@@ -94,7 +94,7 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
   // Alpha 0.1.2's own compact-transcript turn folding is active for this
   // turn: yield the big fold entirely to the product (no double bars); the
   // small tool/think groups stay ours.
-  const productFoldActive = props.turnProcess?.foldable === true
+  const productFoldActive = props.turnProcess !== undefined
   const group = React.useMemo(() => (isTransparentAssistant(node) ? groupOf(chat, node.key) : null), [chat, node])
   const turnInfo = React.useMemo(
     () => (productFoldActive ? null : turnProcessOf(chat, node.key)),

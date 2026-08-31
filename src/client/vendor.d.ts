@@ -2,7 +2,7 @@
  * Minimal type declarations for the DSH packages this plugin imports.
  *
  * The REAL contracts live in the installed DSH (verified against 0.1.1-rc.2
- * AND 0.1.2-alpha.1; see README's "Seam and data model" section). These
+ * AND 0.1.2-alpha.2; see README's "Seam and data model" section). These
  * shims keep the repo typecheckable without a full DSH checkout; the runtime
  * contract is enforced by the DSH page itself (fail-closed guards in
  * slots-core-overlay.ts). The snapshot/seam differences between the two

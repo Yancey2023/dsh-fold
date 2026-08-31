@@ -191,22 +191,23 @@ export function isRunningBlock(block: ToolBlockLike | undefined): block is Runni
 }
 
 /**
- * The conversation's LATEST WORK node — what the folded bar's left side
- * reflects as the AI conversation's latest running state. The NEWEST node in
+ * The conversation's LATEST LIVE WORK node — what the folded bar's left side
+ * reflects as the AI conversation's current running state. The NEWEST node in
  * the flow decides:
- *  - a tool call or a Think row (running/streaming OR settled): it is shown
- *    (a finished bash call stays displayed until newer work takes over);
- *  - ANY other node — new assistant TEXT, a user message, a steering row, a
- *    notice, a turn tail — means the latest state is not a foldable work
- *    block (the model is writing, or the user just spoke): the folded bar
- *    clears instead of showing stale tool content.
+ *  - a running tool call or streaming Think row is shown;
+ *  - a settled work node, or ANY other node (assistant text, user/steering,
+ *    notice, turn tail), clears the bar. In particular, the final tool result
+ *    must clear immediately instead of leaving the completed tool visible
+ *    until the next model chunk arrives.
  */
 export function latestWorkNode(snapshot: GroupSnapshotLike): ChatNodeLike | undefined {
   const order = snapshot.order
   for (let i = order.length - 1; i >= 0; i -= 1) {
     const node = snapshot.nodes.get(order[i])
     if (node === undefined) continue
-    if (node.kind === TOOL_KIND || isTransparentAssistant(node)) return node
+    if (node.kind === TOOL_KIND || isTransparentAssistant(node)) {
+      return isLiveWorkNode(node) ? node : undefined
+    }
     return undefined
   }
   return undefined

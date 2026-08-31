@@ -353,12 +353,11 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// latestWorkNode: the conversation's NEWEST work block (a tool call or a
-// Think row — running OR settled) — the folded bar's left side reflects the
-// AI conversation's latest activity and keeps it after the block finishes.
+// latestWorkNode: the conversation's NEWEST LIVE work block (a running tool
+// call or streaming Think row). Settled work clears immediately.
 // ---------------------------------------------------------------------------
 
-// Newest tool wins over an earlier tool, regardless of state.
+// The newest running tool wins over an earlier running tool.
 {
   const s = snapshot(['t1', 't2'], [toolNode('t1', 1, running('read')), toolNode('t2', 1, running('bash'))])
   const node = latestWorkNode(s)
@@ -366,7 +365,7 @@ function snapshot(order, nodes) {
   assert.equal(node.key, 't2', 'the LATEST tool wins')
 }
 
-// A (settled or streaming) Think row becomes the latest once the tool settled.
+// A streaming Think row becomes the latest once the preceding tool settled.
 {
   const s = snapshot(
     ['t1', 'a2'],
@@ -386,15 +385,13 @@ function snapshot(order, nodes) {
   assert.equal(node?.key, 't1', 'the working call is the latest activity')
 }
 
-// ALL SETTLED (bash just finished): the latest work block STAYS displayed —
-// a completed bash call is still the conversation's latest activity.
+// ALL SETTLED (bash just finished): the left side clears immediately.
 {
   const s = snapshot(
     ['a1', 't1', 't2'],
     [assistantNode('a1', 1, [think('done')]), toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('bash'))],
   )
-  const node = latestWorkNode(s)
-  assert.equal(node?.key, 't2', 'finished bash stays as the latest activity')
+  assert.equal(latestWorkNode(s), undefined, 'finished bash is not live activity')
 }
 
 // Pure text (user + summary) with no tool/think work -> undefined.

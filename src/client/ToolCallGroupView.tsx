@@ -469,7 +469,7 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   // Alpha 0.1.2's own compact-transcript turn folding is active for this
   // turn: yield the big fold entirely to the product (no double bars); the
   // small tool/think groups stay ours.
-  const productFoldActive = props.turnProcess?.foldable === true
+  const productFoldActive = props.turnProcess !== undefined
   const group = React.useMemo(() => groupOf(chat, node.key), [chat, node])
   const turnInfo = React.useMemo(
     () => (productFoldActive ? null : turnProcessOf(chat, node.key)),
