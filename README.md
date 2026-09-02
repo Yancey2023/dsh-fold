@@ -116,11 +116,11 @@ official primitives).
 
 ## DSH version
 
-Adapted to **DSH `0.1.2-alpha.2`** (`useChat` chat target, `chat.legacy.
-turnEnds`, the `turn-process` controller node, product compact-transcript
-fold) while staying compatible with the current release **DSH `0.1.1-rc.2`**
-(cells bind the `conversation` namespace, snapshot carries `useSession`.
-`chat`, no `status`/`turn-process`). The version differences are sealed in
+Adapted to **DSH `0.1.2-alpha.4`** (the latest alpha; `useChat` chat target,
+`chat.legacy.turnEnds`, the `turn-process` controller node, product
+compact-transcript fold) while staying compatible with the latest RC
+**DSH `0.1.1-rc.2`** (cells bind the `conversation` namespace, snapshot carries
+`useSession.chat`, no `status`/`turn-process`). The version differences are sealed in
 `src/client/snapshot-face.ts` (snapshot normalization) and
 `src/client/registry.ts` (`compositeT` namespace fallback); the runtime
 overlay validates the live SlotCore shape and fails closed (plugin stays
