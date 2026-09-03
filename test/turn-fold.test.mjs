@@ -126,7 +126,7 @@ function snapshot(order, nodes, turnEnds) {
 }
 
 // ---------------------------------------------------------------------------
-// ALPHA (0.1.2): the adapter's chat face carries the closure map at
+// NEW / ALPHA (0.1.2): the adapter's chat face carries the closure map at
 // `chat.turnEnds` (flattened from `chat.legacy.turnEnds`) — the same
 // turnProcessOf input shape — and alpha locations expose `turn.status`.
 // ---------------------------------------------------------------------------

@@ -24,10 +24,10 @@
 
 ## DSH 版本
 
-同时适配 **DSH `0.1.2-alpha.4`**（当前最新 alpha；保留 `useChat` 聊天快照、`chat.legacy.
-turnEnds`、`turn-process` 控制器节点、产品自带的紧凑转录折叠）与当前最新 RC
-**DSH `0.1.1-rc.2`**（cell 绑定 `conversation` 命名空间、快照经
-`useSession.chat`、无 `status`/`turn-process`）。版本差异封闭在
+同时适配 DSH 的三个发布通道：**latest `0.1.1-rc.2`**、**new `0.1.2-rc.1`**
+（当前新 RC）与 **alpha `0.1.2-alpha.5`**（当前最新 alpha；保留 `useChat`
+聊天快照、`chat.legacy.turnEnds`、`turn-process` 控制器节点、产品自带的紧凑转录折叠）。
+latest/new 使用 RC 的 `useSession.chat` 快照形态；alpha 使用 `useChat` 聊天快照。版本差异封闭在
 `src/client/snapshot-face.ts`（快照归一化）与 `src/client/registry.ts`
 （`compositeT` 命名空间兜底）两个模块中；运行时 overlay 在 SlotCore 结构
 变化时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
