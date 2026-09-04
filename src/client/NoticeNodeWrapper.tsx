@@ -49,6 +49,13 @@ export const NOTICE_KINDS = new Set([
   'workflow-run',
 ])
 
+/** Notice kinds this wrapper owns but NEVER folds: the seat renders the
+ * official cell view directly, unconditionally. Diagnostics the user must
+ * always see — `turn-error` (本轮运行失败), `turn-max-tokens` (达到输出
+ * 上限) and `model-retry` (已重试模型请求) — stay visible in open turns,
+ * inside tool groups, and behind the closed-turn big fold alike. */
+export const UNFOLDED_NOTICE_KINDS = new Set(['turn-error', 'turn-max-tokens', 'model-retry'])
+
 export interface NoticeNodeWrapperProps {
   /** The node owned by this seat. */
   node: ChatNodeLike
@@ -122,6 +129,15 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   // Fail-soft: only act on the notice kinds this wrapper owns.
   if (!NOTICE_KINDS.has(node.kind)) {
     output = React.createElement(FoldedSeat, null)
+  } else if (UNFOLDED_NOTICE_KINDS.has(node.kind)) {
+    // Never folded: delegate straight to the official cell view (the same
+    // delegation DelegatedNoticeItem uses), with the composite translate so
+    // alpha/rc dictionary placement both resolve.
+    const official = officialNodeEntry(node.kind)
+    const conversationT = compositeT(getChatT(), seatT)
+    output = official !== undefined && official.component != null && conversationT !== undefined
+      ? React.createElement(official.component as React.ComponentType<Record<string, unknown>>, { node, t: conversationT })
+      : React.createElement(FoldedSeat, null)
   } else {
     // Check the turn-level big fold FIRST: a process node of a closed,
     // summarized turn must render the big fold bar (or be hidden behind it)

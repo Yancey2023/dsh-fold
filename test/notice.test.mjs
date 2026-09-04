@@ -223,8 +223,8 @@ setSlotsService({
 }
 
 // ---------------------------------------------------------------------------
-// model-retry (已重试模型请求): between tools it folds WITH the group — its
-// own seat renders the hidden marker (the tool leader's bar owns it).
+// model-retry (已重试模型请求) NEVER folds: between tools its own seat
+// renders the official retry view directly, in any context.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(
@@ -235,13 +235,15 @@ setSlotsService({
   await act(async () => {
     root = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'mr1')))
   })
-  const json = root.toJSON()
-  assert.ok(json.props['data-tool-group-hidden'] !== undefined, 'retry member hidden (folded with the surrounding group)')
+  const text = textOf(root.toJSON())
+  assert.ok(text.includes('OFFICIAL_MODEL_RETRY[mr1]'), 'official retry view rendered unfolded')
+  assert.ok(!text.includes('个块已被折叠'), 'no fold bar')
+  assert.ok(!text.includes('data-tool-group-hidden'), 'no hidden marker in the unfolded seat')
   root.unmount()
 }
 
-// A standalone retry leads its own group bar; expanding shows the official
-// retry view folded with the group items.
+// A standalone retry likewise renders the official view immediately — no
+// group bar, nothing collapsed.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['mr1'], [noticeNode('mr1', 'model-retry', 1)])
@@ -249,13 +251,7 @@ setSlotsService({
   await act(async () => {
     root = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'mr1')))
   })
-  let json = root.toJSON()
-  const text = textOf(json)
-  assert.ok(text.includes('1 个块已被折叠'), 'model-retry notice folds')
-  assert.ok(!text.includes('OFFICIAL_MODEL_RETRY'), 'official view hidden while collapsed')
-  await act(async () => {
-    findAll(json, byClass('dshToolGroupRow'))[0].props.onClick()
-  })
+  assert.equal(findAll(root.toJSON(), byClass('dshToolGroupRow')).length, 0, 'no fold bar')
   assert.ok(textOf(root.toJSON()).includes('OFFICIAL_MODEL_RETRY[mr1]'), 'official retry view when expanded')
   root.unmount()
 }

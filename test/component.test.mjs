@@ -173,25 +173,27 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// A model-retry notice between the tools folds WITH the group: one bar,
-// count includes the retry; the group's live block still shows.
+// A model-retry notice between the tools SPLITS the run: each side its own
+// one-block bar; the retry itself renders unfolded (NoticeNodeWrapper).
 // ---------------------------------------------------------------------------
 {
   const retryNode = (key) => ({ key, kind: 'model-retry', location: { kind: 'step', turn: { turn: 1 }, step: { step: 2 } }, data: {} })
   const snapshot = makeSession(['t1', 'mr1', 't2'], [toolNode('t1', 1, settled('read')), retryNode('mr1'), toolNode('t2', 1, running('bash'))])
   const root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
   const text = textOf(root.toJSON())
-  assert.ok(text.includes('3 个块已被折叠'), 'retry folded WITH the tool group (count 3)')
-  assert.ok(text.includes('Bash') && text.includes('echo hi'), 'live block still the running bash')
-  // Expanded: the tools render in order (the retry item degrades to nothing
-  // without a live registry in this test harness).
+  assert.ok(text.includes('1 个块已被折叠'), 'retry splits the chain — t1 folds alone')
+  assert.ok(!text.includes('Bash'), 'the running bash belongs to the OTHER group, not this bar')
   act(() => {
     root.toJSON().children[0].props.onClick()
   })
   const expanded = textOf(root.toJSON())
-  assert.ok(expanded.includes('FALLBACK:read') && expanded.includes('CARD:bash:c-bash'), 'official tool cards in order')
-  assert.ok(expanded.indexOf('FALLBACK:read') < expanded.indexOf('CARD:bash:c-bash'))
+  assert.ok(expanded.includes('FALLBACK:read') && !expanded.includes('CARD:bash:c-bash'), 'only the read card in this group')
   root.unmount()
+  // The second group keeps its own live running block.
+  const root2 = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't2')))
+  const text2 = textOf(root2.toJSON())
+  assert.ok(text2.includes('Bash') && text2.includes('echo hi'), 'live block still the running bash')
+  root2.unmount()
 }
 
 // ---------------------------------------------------------------------------

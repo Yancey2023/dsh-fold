@@ -108,13 +108,13 @@ function snapshot(order, nodes, turnEnds) {
   assert.equal(info.firstKey, 'c1', 'compaction leads the fold when first')
   assert.deepEqual(
     [...info.keys],
-    ['c1', 'aTh', 't1', 'ctx1', 'cmd1', 'mr1'],
-    'compaction/context/command/model-retry are process nodes; user is not',
+    ['c1', 'aTh', 't1', 'ctx1', 'cmd1'],
+    'compaction/context/command are process nodes; user and diagnostics are not',
   )
   assert.equal(isProcessNode(info, 'u1'), false, 'user node stays visible')
   assert.equal(isProcessNode(info, 'ctx1'), true)
   assert.equal(isProcessNode(info, 'cmd1'), true)
-  assert.equal(isProcessNode(info, 'mr1'), true, 'model-retry (已重试模型请求) joins the fold')
+  assert.equal(isProcessNode(info, 'mr1'), false, 'model-retry (已重试模型请求) never joins the fold')
 }
 
 // A closed turn with only a compaction notice (no assistant summary) does

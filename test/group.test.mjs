@@ -240,25 +240,19 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// model-retry joins the group: a retry notice between tools does NOT split
-// the chain — one group, count includes the retry, order preserved.
+// model-retry no longer folds: a retry notice between tools SPLITS the chain
+// (each side its own group) and the retry seat renders unfolded.
 // ---------------------------------------------------------------------------
 {
   const retry = (key) => ({ key, kind: 'model-retry', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: {} })
   const s = snapshot(['t1', 'mr1', 't2', 'mr2', 't3'], [toolNode('t1', 1, settled('read')), retry('mr1'), toolNode('t2', 1, settled('grep')), retry('mr2'), toolNode('t3', 1, running('bash'))])
   const g = groupOf(s, 't1')
-  assert.ok(g && isGroupLeader(g, 't1'), 'tool leader owns the merged group')
-  assert.equal(g.count, 5, 'count includes the retry notices')
-  assert.deepEqual(g.items.map((i) => i.kind), ['tool', 'notice', 'tool', 'notice', 'tool'], 'retries interleaved in order')
-  assert.deepEqual(g.items.filter((i) => i.kind === 'notice').map((i) => i.cell), ['model-retry', 'model-retry'], 'retry items carry the cell key')
-  assert.deepEqual([...g.itemKeys], ['t1', 'mr1', 't2', 'mr2', 't3'])
-  assert.equal(g.runningItem?.kind, 'tool', 'live content still the running tool')
-  assert.equal(g.runningItem?.key, 't3')
-  const byT2 = groupOf(s, 't2')
-  assert.ok(byT2 && byT2.leaderKey === 't1', 'no separate group for the later tool')
-  const byMr = groupOf(s, 'mr1')
-  assert.ok(byMr && byMr.leaderKey === 't1', 'retry member resolves to the same group')
-  assert.equal(isGroupLeader(byMr, 'mr1'), false, 'retry is not the leader')
+  assert.ok(g && isGroupLeader(g, 't1'), 'first tool leads its own group')
+  assert.deepEqual([...g.itemKeys], ['t1'], 'retry is a run boundary — the group stops before it')
+  const g2 = groupOf(s, 't2')
+  assert.ok(g2 && isGroupLeader(g2, 't2'), 'the later tool leads its own group')
+  assert.deepEqual([...g2.itemKeys], ['t2'], 'each side of a retry is its own group')
+  assert.equal(groupOf(s, 'mr1'), null, 'the retry seat itself forms no group')
 }
 
 // context injection merges the same way: adjacent fold blocks become ONE.
@@ -290,12 +284,10 @@ function snapshot(order, nodes) {
   assert.deepEqual(g.items.filter((i) => i.kind === 'notice').map((i) => i.cell), ['compaction', 'command'], 'cell keys preserved')
 }
 
-// A standalone retry (no adjacent tools/thinks) leads its own group.
+// A standalone retry forms no group at all (it renders unfolded, no bar).
 {
   const s = snapshot(['mr1'], [{ key: 'mr1', kind: 'model-retry', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: {} }])
-  const g = groupOf(s, 'mr1')
-  assert.ok(g && isGroupLeader(g, 'mr1'), 'standalone retry leads its own group')
-  assert.equal(g.count, 1)
+  assert.equal(groupOf(s, 'mr1'), null, 'standalone retry is never a fold group')
 }
 
 // ---------------------------------------------------------------------------

@@ -149,17 +149,16 @@ function sameTurn(left: ChatNodeLike, right: ChatNodeLike): boolean {
 }
 
 /** Every non-text cell that folds WITH the adjacent work instead of a
- * separate bar (never splits a chain): model-retry, context injection,
- * compaction, manual compaction, commands, turn errors / max-token notices,
- * unknown surfaces, workflow runs. */
+ * separate bar (never splits a chain): context injection, compaction, manual
+ * compaction, commands, unknown surfaces, workflow runs. Deliberately NOT
+ * here — diagnostics the user must always see, which render unfolded and act
+ * as run boundaries: `turn-error` (本轮运行失败), `turn-max-tokens`
+ * (达到输出上限) and `model-retry` (已重试模型请求). */
 export const INLINE_NOTICE_KINDS = new Set([
-  'model-retry',
   'context',
   'compaction',
   'manual-compaction',
   'command',
-  'turn-error',
-  'turn-max-tokens',
   'unknown',
   'workflow-run',
 ])
