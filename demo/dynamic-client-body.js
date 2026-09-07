@@ -2,10 +2,12 @@ const __dynRequire = (spec) => {
   if (spec === 'react' || spec === 'react/jsx-runtime') return React
   if (spec === '@deepseek-ai/dsh-client-ui-slots') return slotsMod
   if (spec === '@deepseek-ai/dsh-client-ui-primitives') return primMod
+  if (spec === '@deepseek-ai/dsh-client-ui-attachment') return attachmentMod
   throw new Error('dynamic demo: unhandled require ' + spec)
 }
 const slotsMod = await globalThis.__DSH_MODULES__.import('@deepseek-ai/dsh-client-ui-slots')
 const primMod = await globalThis.__DSH_MODULES__.import('@deepseek-ai/dsh-client-ui-primitives')
+const attachmentMod = await globalThis.__DSH_MODULES__.import('@deepseek-ai/dsh-client-ui-attachment')
 var module = { exports: {} }
 var exports = module.exports
 Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
@@ -54,6 +56,7 @@ var React4 = __toESM(__dynRequire("react"), 1);
 // src/client/group.ts
 var TOOL_KIND = "tool-call";
 var ASSISTANT_KIND = "assistant-step";
+var TURN_PROCESS_NODE_KIND = "turn-process";
 function turnOf(node) {
   const loc = node.location;
   if (loc === void 0) return void 0;
@@ -65,8 +68,16 @@ function sameTurn(left, right) {
   if (tl === void 0) return false;
   return tl === turnOf(right);
 }
-function isRetryNode(node) {
-  return node !== void 0 && node.kind === "model-retry";
+var INLINE_NOTICE_KINDS = /* @__PURE__ */ new Set([
+  "context",
+  "compaction",
+  "manual-compaction",
+  "command",
+  "unknown",
+  "workflow-run"
+]);
+function isInlineNoticeNode(node) {
+  return node !== void 0 && INLINE_NOTICE_KINDS.has(node.kind);
 }
 function isTransparentAssistant(node) {
   if (node === void 0 || node.kind !== ASSISTANT_KIND) return false;
@@ -85,7 +96,9 @@ function latestWorkNode(snapshot) {
   for (let i = order.length - 1; i >= 0; i -= 1) {
     const node = snapshot.nodes.get(order[i]);
     if (node === void 0) continue;
-    if (node.kind === TOOL_KIND || isTransparentAssistant(node)) return node;
+    if (node.kind === TOOL_KIND || isTransparentAssistant(node)) {
+      return isLiveWorkNode(node) ? node : void 0;
+    }
     return void 0;
   }
   return void 0;
@@ -93,21 +106,23 @@ function latestWorkNode(snapshot) {
 function isLiveWorkNode(node) {
   if (node === void 0) return false;
   if (node.kind === TOOL_KIND) return isRunningBlock(node.data?.root);
-  return node.data?.status === "running";
+  const status = node.data?.status;
+  if (status !== void 0) return status === "running";
+  return node.data?.final === void 0;
 }
 function callName(block) {
   return "kind" in block ? block.call?.name ?? "" : block.name;
 }
 function continuesRun(node, anchor) {
   if (!sameTurn(node, anchor)) return false;
-  return node.kind === TOOL_KIND || isTransparentAssistant(node) || isRetryNode(node);
+  return node.kind === TOOL_KIND || node.kind === TURN_PROCESS_NODE_KIND || isTransparentAssistant(node) || isInlineNoticeNode(node);
 }
 function groupOf(snapshot, nodeKey) {
   const order = snapshot.order;
   const idx = order.indexOf(nodeKey);
   if (idx < 0) return null;
   const node = snapshot.nodes.get(nodeKey);
-  if (node === void 0 || node.kind !== TOOL_KIND && !isTransparentAssistant(node) && !isRetryNode(node)) return null;
+  if (node === void 0 || node.kind !== TOOL_KIND && !isTransparentAssistant(node) && !isInlineNoticeNode(node)) return null;
   let start = idx;
   while (start > 0) {
     const prev = snapshot.nodes.get(order[start - 1]);
@@ -126,23 +141,34 @@ function groupOf(snapshot, nodeKey) {
   for (const key of keys) {
     const member = snapshot.nodes.get(key);
     if (member === void 0) continue;
+    if (member.kind === TURN_PROCESS_NODE_KIND) continue;
+    const transparent = isTransparentAssistant(member);
     if (member.kind === TOOL_KIND) {
       if (firstToolKey === void 0) firstToolKey = key;
       items.push({ kind: "tool", key, node: member });
-    } else if (isTransparentAssistant(member)) {
+    } else if (transparent) {
       items.push({ kind: "think", key, node: member });
-    } else if (isRetryNode(member)) {
-      items.push({ kind: "retry", key, node: member });
+    } else if (isInlineNoticeNode(member)) {
+      items.push({ kind: "notice", cell: member.kind, key, node: member });
     }
   }
-  const leaderKey = firstToolKey ?? keys[0];
+  let leaderKey = firstToolKey;
+  if (leaderKey === void 0) {
+    for (const key of keys) {
+      const member = snapshot.nodes.get(key);
+      if (member !== void 0 && member.kind !== TURN_PROCESS_NODE_KIND) {
+        leaderKey = key;
+        break;
+      }
+    }
+  }
   if (leaderKey === void 0) return null;
   let running;
   let runningToolItem;
   let runningThinkItem;
   for (const item of items) {
     if (item.kind !== "tool") {
-      if (runningThinkItem === void 0 && item.node.data?.status === "running") runningThinkItem = item;
+      if (runningThinkItem === void 0 && isLiveWorkNode(item.node)) runningThinkItem = item;
       continue;
     }
     const block = item.node.data?.root;
@@ -154,18 +180,6 @@ function groupOf(snapshot, nodeKey) {
 }
 function isGroupLeader(group, nodeKey) {
   return group.leaderKey === nodeKey;
-}
-function eqGroup(left, right) {
-  if (left === null || right === null) return left === right;
-  if (left.leaderKey !== right.leaderKey || left.running !== right.running) return false;
-  if (left.itemKeys.length !== right.itemKeys.length || left.items.length !== right.items.length) return false;
-  for (let i = 0; i < left.itemKeys.length; i += 1) {
-    if (left.itemKeys[i] !== right.itemKeys[i]) return false;
-  }
-  for (let i = 0; i < left.items.length; i += 1) {
-    if (left.items[i].node !== right.items[i].node) return false;
-  }
-  return true;
 }
 
 // src/client/ToolCallGroupView.tsx
@@ -281,7 +295,13 @@ function setSessionsService(service) {
 }
 var SCROLL_HOST_SELECTOR = "[data-conversation-scroll]";
 var TOP_THRESHOLD = 4;
-var CONTINUE_DELAY_MS = 250;
+var CHECK_INTERVAL_MS = 100;
+function tryUnref(timer) {
+  if (typeof timer === "object" && timer !== null && "unref" in timer) {
+    ;
+    timer.unref?.();
+  }
+}
 async function fireLoadOlder(sessionId) {
   const sessions = sessionsService;
   if (sessions === void 0) return;
@@ -307,10 +327,6 @@ function attachAutoLoad(anchor, sessionId, hasMore, loadingOlder) {
     existing.hasMore = hasMore;
     existing.loadingOlder = loadingOlder;
     existing.owners += 1;
-    if (existing.continueAfterRefresh && !existing.pumping && host.scrollTop <= TOP_THRESHOLD && existing.hasMore && !existing.loadingOlder) {
-      existing.continueAfterRefresh = false;
-      void pump(existing, host);
-    }
     return () => {
       release(host, existing);
     };
@@ -323,7 +339,6 @@ function attachAutoLoad(anchor, sessionId, hasMore, loadingOlder) {
     detached: false,
     onScroll: null,
     pumping: false,
-    continueAfterRefresh: false,
     pendingTimer: null
   };
   attachedHosts.set(host, entry);
@@ -331,6 +346,10 @@ function attachAutoLoad(anchor, sessionId, hasMore, loadingOlder) {
     if (host.scrollTop <= TOP_THRESHOLD) void pump(entry, host);
   };
   host.addEventListener("scroll", entry.onScroll, { passive: true });
+  entry.pendingTimer = setInterval(() => {
+    if (host.scrollTop <= TOP_THRESHOLD) void pump(entry, host);
+  }, CHECK_INTERVAL_MS);
+  tryUnref(entry.pendingTimer);
   return () => {
     release(host, entry);
   };
@@ -339,31 +358,17 @@ function attachAutoLoad(anchor, sessionId, hasMore, loadingOlder) {
     if (target.scrollTop > TOP_THRESHOLD) return;
     if (!current.hasMore || current.loadingOlder) return;
     current.pumping = true;
-    current.continueAfterRefresh = false;
     try {
       await fireLoadOlder(current.sessionId);
     } finally {
       current.pumping = false;
     }
-    if (current.detached) return;
-    current.continueAfterRefresh = target.scrollTop <= TOP_THRESHOLD;
-    if (!current.continueAfterRefresh) return;
-    current.pendingTimer = setTimeout(() => {
-      current.pendingTimer = null;
-      if (current.detached || current.pumping || !current.continueAfterRefresh) return;
-      if (target.scrollTop > TOP_THRESHOLD || !current.hasMore || current.loadingOlder) {
-        current.continueAfterRefresh = false;
-        return;
-      }
-      current.continueAfterRefresh = false;
-      void pump(current, target);
-    }, CONTINUE_DELAY_MS);
   }
   function release(target, current) {
     current.owners -= 1;
     if (current.owners > 0 || current.detached) return;
     current.detached = true;
-    if (current.pendingTimer !== null) clearTimeout(current.pendingTimer);
+    if (current.pendingTimer !== null) clearInterval(current.pendingTimer);
     current.pendingTimer = null;
     attachedHosts.delete(target);
     if (current.onScroll !== null) target.removeEventListener("scroll", current.onScroll);
@@ -401,6 +406,66 @@ function setConversationT(t) {
 function getConversationT() {
   return conversationT;
 }
+var chatT;
+function setChatT(t) {
+  chatT = t;
+}
+function getChatT() {
+  return chatT;
+}
+function compositeT(primary, secondary) {
+  const first = primary ?? secondary;
+  if (first === void 0) {
+    return (key, params) => params !== void 0 && "count" in params ? String(params.count) : key;
+  }
+  const alternate = primary !== void 0 && secondary !== void 0 && primary !== secondary ? secondary : void 0;
+  if (alternate === void 0) return first;
+  return (key, params) => {
+    const value = first(key, params);
+    if (value !== key) return value;
+    const alt = alternate(key, params);
+    return alt !== key ? alt : value;
+  };
+}
+
+// src/client/snapshot-face.ts
+var EMPTY_ORDER = [];
+var EMPTY_NODES = { get: (_key) => void 0 };
+var EMPTY_CHAT = { order: EMPTY_ORDER, nodes: EMPTY_NODES };
+var EMPTY_FACE = { chat: EMPTY_CHAT, hasMore: false, loadingOlder: false };
+function isChatTarget(raw) {
+  const value = raw;
+  return value !== null && typeof value === "object" && Array.isArray(value.order) && value.nodes !== null && typeof value.nodes === "object" && typeof value.nodes.get === "function";
+}
+function chatFaceOf(raw) {
+  const session = raw;
+  const chat = session !== null && typeof session === "object" && isChatTarget(session.chat) ? session.chat : raw;
+  if (!isChatTarget(chat)) return EMPTY_CHAT;
+  const chatValue = chat;
+  const turnEnds = chatValue.legacy?.turnEnds ?? chatValue.turnEnds ?? (session !== null && typeof session === "object" ? session.turnEnds : void 0);
+  return { order: chatValue.order, nodes: chatValue.nodes, turnEnds };
+}
+function chatFaceEq(left, right) {
+  if (left === right) return true;
+  return left.order === right.order && left.nodes === right.nodes && left.turnEnds === right.turnEnds;
+}
+function windowFlagsOf(raw) {
+  const session = raw;
+  return {
+    hasMore: session !== null && typeof session === "object" && session.hasMore === true,
+    loadingOlder: session !== null && typeof session === "object" && session.loadingOlder === true
+  };
+}
+function windowFlagsEq(left, right) {
+  return left.hasMore === right.hasMore && left.loadingOlder === right.loadingOlder;
+}
+function useSnapshotFace(props) {
+  const useChat = typeof props.useChat === "function" ? props.useChat : void 0;
+  const useSession = typeof props.useSession === "function" ? props.useSession : void 0;
+  const chat = useChat !== void 0 ? useChat((snapshot) => chatFaceOf(snapshot), chatFaceEq) : useSession !== void 0 ? useSession((snapshot) => chatFaceOf(snapshot), chatFaceEq) : EMPTY_CHAT;
+  const flags = useSession !== void 0 ? useSession((snapshot) => windowFlagsOf(snapshot), windowFlagsEq) : { hasMore: false, loadingOlder: false };
+  return flags.hasMore || flags.loadingOlder || chat !== EMPTY_CHAT ? { chat, hasMore: flags.hasMore, loadingOlder: flags.loadingOlder } : EMPTY_FACE;
+}
 
 // src/client/turn-fold.ts
 var React2 = __toESM(__dynRequire("react"), 1);
@@ -414,22 +479,26 @@ var FOLDABLE_KINDS = /* @__PURE__ */ new Set([
   "context",
   "manual-compaction",
   "command",
-  "model-retry",
-  "turn-error",
-  "turn-max-tokens",
   "unknown",
-  "workflow-run"
+  "workflow-run",
+  // Alpha 0.1.2 projects a hidden turn-process controller per closed turn;
+  // it belongs to the process span (its seat is the product's own, hidden in
+  // normal mode, so this entry only matters for the span computation).
+  "turn-process"
 ]);
 function turnProcessOf(session, nodeKey) {
-  const node = session.chat.nodes.get(nodeKey);
+  const face = session.chat !== void 0 && Array.isArray(session.chat.order) ? session.chat : session;
+  const node = face.nodes.get(nodeKey);
   if (node === void 0) return null;
   const turn = turnOf(node);
   if (turn === void 0) return null;
-  const turnEnds = session.turnEnds;
-  if (turnEnds === void 0 || !turnEnds.has(turn)) return null;
+  const turnEnds = face.turnEnds ?? session.turnEnds;
+  const closedByMap = turnEnds !== void 0 && turnEnds.has(turn);
+  const closedByLocation = (node.location?.kind === "turn" || node.location?.kind === "step") && node.location.turn?.status === "closed";
+  if (!closedByMap && !closedByLocation) return null;
   const turnNodes = [];
-  for (const key of session.chat.order) {
-    const member = session.chat.nodes.get(key);
+  for (const key of face.order) {
+    const member = face.nodes.get(key);
     if (member === void 0 || turnOf(member) !== turn) continue;
     if (FOLDABLE_KINDS.has(member.kind)) turnNodes.push(member);
   }
@@ -451,15 +520,6 @@ function isProcessNode(info, nodeKey) {
 }
 function isTurnSummary(info, nodeKey) {
   return info !== null && info.summaryKey === nodeKey;
-}
-function eqTurnProcess(left, right) {
-  if (left === null || right === null) return left === right;
-  if (left.turn !== right.turn || left.summaryKey !== right.summaryKey || left.firstKey !== right.firstKey) return false;
-  if (left.keys.length !== right.keys.length) return false;
-  for (let i = 0; i < left.keys.length; i += 1) {
-    if (left.keys[i] !== right.keys[i]) return false;
-  }
-  return true;
 }
 var expandedTurns = /* @__PURE__ */ new Map();
 var listeners = /* @__PURE__ */ new Set();
@@ -612,7 +672,7 @@ function ThinkItem({ item, t }) {
   const blocks = item.node.data?.blocks ?? [];
   const reasoning = blocks.filter((block) => block.kind === "reasoning" && (block.text ?? "").trim() !== "");
   if (reasoning.length === 0) return null;
-  const running = item.node.data?.status === "running";
+  const running = isLiveWorkNode(item.node);
   return React3.createElement(
     React3.Fragment,
     null,
@@ -704,10 +764,24 @@ var GroupBar = React3.memo(function GroupBar2({ group, expanded, onToggle, onKey
     )
   );
 });
-var RetryItem = React3.memo(function RetryItem2({ item, conversationT: conversationT2 }) {
-  const official = officialNodeEntry("model-retry");
+var DelegatedNoticeItem = React3.memo(function DelegatedNoticeItem2({ item, conversationT: conversationT2 }) {
   const t = conversationT2 ?? getConversationT();
-  if (official === void 0 || official.component == null || t === void 0) return null;
+  if (t === void 0) return null;
+  if (item.cell === "workflow-run") {
+    const data = item.node.data ?? {};
+    return React3.createElement(
+      "div",
+      { className: "dshWorkflowRunItem" },
+      React3.createElement("span", { className: "dshWorkflowRunTitle" }, data.name ?? "workflow"),
+      data.status !== void 0 ? React3.createElement("span", { className: "dshWorkflowRunStatus" }, String(data.status)) : null
+    );
+  }
+  const official = officialNodeEntry(item.cell);
+  if (official === void 0 || official.component == null) return null;
+  if (item.cell === "command") {
+    const renderSlot = (_key, _owner, opts) => opts?.fallback ?? null;
+    return React3.createElement(official.component, { node: item.node, t, renderSlot });
+  }
   return React3.createElement(official.component, { node: item.node, t });
 });
 var GroupItems = React3.memo(function GroupItems2(props) {
@@ -719,8 +793,8 @@ var GroupItems = React3.memo(function GroupItems2(props) {
       if (item.kind === "think") {
         return React3.createElement(ThinkItem, { key: item.key, item, t });
       }
-      if (item.kind === "retry") {
-        return React3.createElement(RetryItem, { key: item.key, item, conversationT: conversationT2 });
+      if (item.kind === "notice") {
+        return React3.createElement(DelegatedNoticeItem, { key: item.key, item, conversationT: conversationT2 });
       }
       const root = item.node.data?.root;
       if (root === void 0 || renderSlot === void 0 || openFile === void 0 || inspectCall === void 0) return null;
@@ -742,11 +816,14 @@ function FoldedSeat() {
 }
 var ToolCallGroupView = React3.memo(function ToolCallGroupView2(props) {
   const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t, sessionId } = props;
-  const group = useSession((snapshot) => groupOf(snapshot.chat, node.key), eqGroup);
-  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
-  const live = useSession((snapshot) => latestWorkNode(snapshot.chat));
-  const hasMore = useSession((snapshot) => snapshot.hasMore === true);
-  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true);
+  const { chat, hasMore, loadingOlder } = useSnapshotFace(props);
+  const productFoldActive = props.turnProcess !== void 0;
+  const group = React3.useMemo(() => groupOf(chat, node.key), [chat, node]);
+  const turnInfo = React3.useMemo(
+    () => productFoldActive ? null : turnProcessOf(chat, node.key),
+    [chat, node, productFoldActive]
+  );
+  const live = React3.useMemo(() => latestWorkNode(chat), [chat]);
   const conversationT2 = getConversationT();
   const [expanded, setExpanded] = React3.useState(false);
   const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
@@ -820,7 +897,8 @@ function renderOfficial(props) {
   const data = node.data;
   const blocks = data?.blocks;
   const filtered = Array.isArray(blocks) ? blocks.filter((b) => b.kind !== "reasoning") : blocks;
-  const forwarded = filtered === blocks ? props : { ...props, node: { ...node, data: { ...data, blocks: filtered } } };
+  const forwardedBase = { ...props, t: compositeT(getChatT(), typeof props.t === "function" ? props.t : void 0) };
+  const forwarded = filtered === blocks ? forwardedBase : { ...forwardedBase, node: { ...node, data: { ...data, blocks: filtered } } };
   return React4.createElement(official.component, forwarded);
 }
 function FoldedSeat2() {
@@ -828,12 +906,16 @@ function FoldedSeat2() {
 }
 var AssistantNodeWrapper = React4.memo(function AssistantNodeWrapper2(props) {
   const { node, useSession, sessionId } = props;
-  setConversationT(typeof props.t === "function" ? props.t : void 0);
-  const group = useSession((snapshot) => isTransparentAssistant(node) ? groupOf(snapshot.chat, node.key) : null, eqGroup);
-  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
-  const live = useSession((snapshot) => latestWorkNode(snapshot.chat));
-  const hasMore = useSession((snapshot) => snapshot.hasMore === true);
-  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true);
+  const seatT = typeof props.t === "function" ? props.t : void 0;
+  setConversationT(compositeT(getChatT(), seatT));
+  const { chat, hasMore, loadingOlder } = useSnapshotFace(props);
+  const productFoldActive = props.turnProcess !== void 0;
+  const group = React4.useMemo(() => isTransparentAssistant(node) ? groupOf(chat, node.key) : null, [chat, node]);
+  const turnInfo = React4.useMemo(
+    () => productFoldActive ? null : turnProcessOf(chat, node.key),
+    [chat, node, productFoldActive]
+  );
+  const live = React4.useMemo(() => latestWorkNode(chat), [chat]);
   const [expanded, setExpanded] = React4.useState(false);
   const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
   const toggle = React4.useCallback(() => setExpanded((value) => !value), []);
@@ -858,11 +940,12 @@ var AssistantNodeWrapper = React4.memo(function AssistantNodeWrapper2(props) {
     [turnToggle]
   );
   const t = getGroupT() ?? ((key, params) => params && "count" in params ? String(params.count) : key);
+  const groupConversationT = compositeT(getChatT(), seatT);
   const thinkContent = group !== null && isGroupLeader(group, node.key) ? React4.createElement(
     React4.Fragment,
     null,
     React4.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live }),
-    expanded ? React4.createElement(GroupItems, { group, t, conversationT: typeof props.t === "function" ? props.t : void 0 }) : null
+    expanded ? React4.createElement(GroupItems, { group, t, conversationT: groupConversationT }) : null
   ) : null;
   let output;
   if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
@@ -898,10 +981,9 @@ var AssistantNodeWrapper = React4.memo(function AssistantNodeWrapper2(props) {
 var React5 = __toESM(__dynRequire("react"), 1);
 var import_dsh_client_ui_primitives2 = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
 var import_dsh_client_ui_attachment = __dynRequire("@deepseek-ai/dsh-client-ui-attachment");
-var NOOP_T = (key, params) => params !== void 0 && "count" in params ? String(params.count) : key;
 function contentParts(content) {
   const texts = [];
-  const images = [];
+  const attachments = [];
   const rest = [];
   for (const raw of content) {
     if (raw === null || typeof raw !== "object") {
@@ -910,35 +992,29 @@ function contentParts(content) {
     }
     const block = raw;
     if (block.type === "text" && typeof block.text === "string") texts.push(block.text);
-    else if (block.type === "image" && block.attachment !== void 0) images.push({ attachment: block.attachment });
+    else if (block.type === "image" && block.attachment !== void 0) attachments.push({ type: "image", image: { attachment: block.attachment } });
+    else if (block.type === "file" && block.attachment !== void 0) attachments.push({ type: "file", file: block.attachment });
     else rest.push(raw);
   }
-  return { text: texts.join(""), images, rest };
+  const images = attachments.filter((a) => a.type === "image").map((a) => a.image);
+  return { text: texts.join(""), attachments, images, rest };
 }
-var REF_TOKEN = /(^|\s)([/@][\w-]+)(?=\s|$)/g;
-function projectUserText(text) {
-  const parts = [];
-  let cursor = 0;
-  let match;
-  REF_TOKEN.lastIndex = 0;
-  while ((match = REF_TOKEN.exec(text)) !== null) {
-    const tokenStart = match.index + (match[1]?.length ?? 0);
-    const label = match[2] ?? "";
-    if (tokenStart > cursor) {
-      parts.push(React5.createElement(import_dsh_client_ui_primitives2.MessageText, { key: `t${cursor}`, text: text.slice(cursor, tokenStart) }));
-    }
-    parts.push(
-      React5.createElement(
-        "span",
-        { key: `r${tokenStart}`, className: "dshUserRefChip", "data-ref-chip": label.startsWith("@") ? "subagent" : "skill" },
-        label
-      )
-    );
-    cursor = tokenStart + label.length;
-  }
-  if (parts.length === 0) return React5.createElement(import_dsh_client_ui_primitives2.MessageText, { text });
-  if (cursor < text.length) parts.push(React5.createElement(import_dsh_client_ui_primitives2.MessageText, { key: `t${cursor}`, text: text.slice(cursor) }));
-  return React5.createElement(React5.Fragment, null, parts);
+function extensionOf(name2) {
+  const dot = name2.lastIndexOf(".");
+  if (dot <= 0 || dot === name2.length - 1) return "";
+  return name2.slice(dot + 1).toUpperCase().slice(0, 8);
+}
+function fileSizeTextLocal(bytes) {
+  if (bytes < 1024) return `${bytes}B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)}KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}MB`;
+  const gb = mb / 1024;
+  return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}GB`;
+}
+function fileSize(bytes) {
+  return typeof import_dsh_client_ui_primitives2.fileSizeText === "function" ? (0, import_dsh_client_ui_primitives2.fileSizeText)(bytes) : fileSizeTextLocal(bytes);
 }
 function imageLabels(t) {
   return {
@@ -988,9 +1064,25 @@ function CopyAction({ text, t }) {
     )
   );
 }
+function FileCard({ file }) {
+  const meta = [extensionOf(file.name), fileSize(file.bytes)].filter(Boolean).join(" ");
+  return React5.createElement(
+    "span",
+    { className: "dshUserFileCard", title: file.name },
+    typeof import_dsh_client_ui_primitives2.DocumentFileIcon === "function" ? React5.createElement(import_dsh_client_ui_primitives2.DocumentFileIcon, { className: "dshUserFileIcon" }) : null,
+    React5.createElement(
+      "span",
+      { className: "dshUserFileContent" },
+      React5.createElement("span", { className: "dshUserFileName" }, file.name),
+      meta !== "" ? React5.createElement("span", { className: "dshUserFileMeta" }, meta) : null
+    )
+  );
+}
 var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
-  const { node, loadImage, t, sessionId, useSession } = props;
-  setConversationT(typeof t === "function" ? t : void 0);
+  const { node, loadImage, renderMessageImages, t, sessionId } = props;
+  const seatT = typeof t === "function" ? t : void 0;
+  const translate = compositeT(getChatT(), seatT);
+  setConversationT(translate);
   const [expanded, setExpanded] = React5.useState(false);
   const clampRef = React5.useRef(null);
   const [overflowing, setOverflowing] = React5.useState(false);
@@ -1005,29 +1097,46 @@ var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
     return () => observer.disconnect();
   }, [expanded]);
   const toggle = React5.useCallback(() => setExpanded((value) => !value), []);
-  const hasMore = typeof useSession === "function" ? useSession((snapshot) => snapshot.hasMore === true) : false;
-  const loadingOlder = typeof useSession === "function" ? useSession((snapshot) => snapshot.loadingOlder === true) : false;
+  const { hasMore, loadingOlder } = useSnapshotFace(props);
   const data = node.data ?? {};
   const rawContent = data.content;
   const content = Array.isArray(rawContent) ? rawContent : typeof rawContent === "string" ? [{ type: "text", text: rawContent }] : [];
-  const { text, images, rest } = contentParts(content);
-  const showBubble = text !== "" || rest.length > 0;
-  const translate = t ?? NOOP_T;
+  const { text, attachments, images, rest } = contentParts(content);
+  const alphaKit = typeof loadImage === "function";
+  const extraRest = alphaKit ? rest : [...rest, ...attachments.filter((a) => a.type === "file")];
+  const showBubble = text !== "" || extraRest.length > 0;
   const toolT = getGroupT() ?? translate;
   const labels = imageLabels(translate);
   const showToggle = expanded || overflowing;
+  const renderAttachments = () => {
+    if (attachments.length === 0) return null;
+    if (typeof renderMessageImages === "function") {
+      if (!alphaKit) {
+        return renderMessageImages({ images, align: "end" });
+      }
+      const compact = attachments.length > 1;
+      return React5.createElement(
+        "div",
+        { className: "dshUserAttachmentRow", "data-message-attachments": "" },
+        attachments.map(
+          (attachment, index) => attachment.type === "image" ? React5.createElement(React5.Fragment, { key: `image:${index}` }, renderMessageImages({ images: [attachment.image], align: "end", compact })) : React5.createElement(FileCard, { key: `file:${index}`, file: attachment.file })
+        )
+      );
+    }
+    return React5.createElement(import_dsh_client_ui_attachment.ImageGallery, {
+      images,
+      load: loadImage ?? (() => Promise.reject(new Error("image loader unavailable"))),
+      align: "end",
+      labels
+    });
+  };
   const output = React5.createElement(
     "div",
     { className: "dshUserRow", "data-time-hover-root": "" },
     React5.createElement(
       "div",
       { className: "dshUserStack" },
-      images.length > 0 ? React5.createElement(import_dsh_client_ui_attachment.ImageGallery, {
-        images,
-        load: loadImage ?? (() => Promise.reject(new Error("image loader unavailable"))),
-        align: "end",
-        labels
-      }) : null,
+      renderAttachments(),
       showBubble ? React5.createElement(
         "div",
         { className: "dshUserBubble" },
@@ -1038,8 +1147,8 @@ var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
         React5.createElement(
           "div",
           { ref: clampRef, className: "dshUserBubbleClamp", "data-clamped": expanded ? void 0 : "" },
-          text !== "" ? projectUserText(text) : null,
-          ...rest.map(
+          text !== "" ? (0, import_dsh_client_ui_primitives2.projectUserText)(text, data.referenceLabels ?? [], data.skillNames ?? [], "skill") : null,
+          ...extraRest.map(
             (block, index) => React5.createElement(import_dsh_client_ui_primitives2.JsonBlock, {
               key: `extra${index}`,
               label: translate("message.extraBlock"),
@@ -1087,19 +1196,23 @@ var NOTICE_KINDS = /* @__PURE__ */ new Set([
   "unknown",
   "workflow-run"
 ]);
-function singleGroup(node) {
-  return { leaderKey: node.key, itemKeys: [node.key], items: [], count: 1, running: void 0, runningItem: void 0 };
-}
+var UNFOLDED_NOTICE_KINDS = /* @__PURE__ */ new Set(["turn-error", "turn-max-tokens", "model-retry"]);
 function FoldedSeat3() {
   return React6.createElement("div", { "data-tool-group-hidden": "" });
 }
 var NoticeNodeWrapper = React6.memo(function NoticeNodeWrapper2(props) {
   const { node, useSession, sessionId } = props;
-  const turnInfo = useSession((snapshot) => turnProcessOf(snapshot, node.key), eqTurnProcess);
-  const retryGroup = useSession((snapshot) => node.kind === "model-retry" ? groupOf(snapshot.chat, node.key) : null, eqGroup);
-  const live = useSession((snapshot) => latestWorkNode(snapshot.chat));
-  const hasMore = useSession((snapshot) => snapshot.hasMore === true);
-  const loadingOlder = useSession((snapshot) => snapshot.loadingOlder === true);
+  const { chat, hasMore, loadingOlder } = useSnapshotFace(props);
+  const productFoldActive = props.turnProcess !== void 0;
+  const turnInfo = React6.useMemo(
+    () => productFoldActive ? null : turnProcessOf(chat, node.key),
+    [chat, node, productFoldActive]
+  );
+  const inlineGroup = React6.useMemo(
+    () => isInlineNoticeNode(node) ? groupOf(chat, node.key) : null,
+    [chat, node]
+  );
+  const live = React6.useMemo(() => latestWorkNode(chat), [chat]);
   const [expanded, setExpanded] = React6.useState(false);
   const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
   const toggle = React6.useCallback(() => setExpanded((value) => !value), []);
@@ -1124,62 +1237,52 @@ var NoticeNodeWrapper = React6.memo(function NoticeNodeWrapper2(props) {
     [turnToggle]
   );
   const t = getGroupT() ?? ((key, params) => params && "count" in params ? String(params.count) : key);
-  setConversationT(typeof props.t === "function" ? props.t : void 0);
+  const seatT = typeof props.t === "function" ? props.t : void 0;
+  setConversationT(compositeT(getChatT(), seatT));
   let output;
   if (!NOTICE_KINDS.has(node.kind)) {
     output = React6.createElement(FoldedSeat3, null);
-  } else if (isRetryNode(node) && retryGroup !== null) {
-    if (!isGroupLeader(retryGroup, node.key)) {
-      output = React6.createElement(FoldedSeat3, null);
-    } else {
-      const conversationT2 = typeof props.t === "function" ? props.t : void 0;
-      const groupSmall = React6.createElement(
-        "div",
-        { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
-        React6.createElement(GroupBar, { group: retryGroup, expanded, onToggle: toggle, onKeyDown, t, live }),
-        expanded ? React6.createElement(GroupItems, { group: retryGroup, t, conversationT: conversationT2 }) : null
-      );
-      const first = node.key === turnInfo?.firstKey;
-      if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-        output = turnExpanded ? React6.createElement(React6.Fragment, null, first ? React6.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null, groupSmall) : first ? React6.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React6.createElement(FoldedSeat3, null);
-      } else {
-        output = groupSmall;
-      }
-    }
-  } else {
+  } else if (UNFOLDED_NOTICE_KINDS.has(node.kind)) {
     const official = officialNodeEntry(node.kind);
-    const officialContent = official === void 0 || official.component == null ? null : React6.createElement(official.component, props);
-    if (officialContent === null) {
+    const conversationT2 = compositeT(getChatT(), seatT);
+    output = official !== void 0 && official.component != null && conversationT2 !== void 0 ? React6.createElement(official.component, { node, t: conversationT2 }) : React6.createElement(FoldedSeat3, null);
+  } else {
+    if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
+      const first = node.key === turnInfo.firstKey;
+      if (!turnExpanded) {
+        output = first ? React6.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React6.createElement(FoldedSeat3, null);
+      } else {
+        const leaderSeat = inlineGroup !== null && isGroupLeader(inlineGroup, node.key);
+        const groupSmall = leaderSeat ? buildGroupSmall() : first ? null : React6.createElement(FoldedSeat3, null);
+        const small = first && groupSmall !== null && groupSmall.props !== void 0 && groupSmall.props["data-tool-group-hidden"] !== void 0 ? null : groupSmall;
+        output = React6.createElement(
+          React6.Fragment,
+          null,
+          first ? React6.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
+          small
+        );
+      }
+    } else if (inlineGroup === null || !isGroupLeader(inlineGroup, node.key)) {
       output = React6.createElement(FoldedSeat3, null);
     } else {
-      const group = singleGroup(node);
-      const bar = React6.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live });
-      const notice = React6.createElement(
-        "div",
-        { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
-        bar,
-        expanded ? React6.createElement("div", { className: "dshToolGroupItems" }, officialContent) : null
-      );
-      if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
-        output = officialContent;
-      } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-        const first = node.key === turnInfo.firstKey;
-        if (!turnExpanded) {
-          output = first ? React6.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React6.createElement(FoldedSeat3, null);
-        } else {
-          output = React6.createElement(
-            React6.Fragment,
-            null,
-            first ? React6.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-            notice
-          );
-        }
-      } else {
-        output = notice;
-      }
+      output = buildGroupSmall();
     }
   }
   return React6.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+  function buildGroupSmall() {
+    const g = inlineGroup;
+    const official = officialNodeEntry(node.kind);
+    if (g.count === 1 && (official === void 0 || official.component == null)) {
+      return React6.createElement(FoldedSeat3, null);
+    }
+    const conversationT2 = compositeT(getChatT(), seatT);
+    return React6.createElement(
+      "div",
+      { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
+      React6.createElement(GroupBar, { group: g, expanded, onToggle: toggle, onKeyDown, t, live }),
+      expanded ? React6.createElement(GroupItems, { group: g, t, conversationT: conversationT2 }) : null
+    );
+  }
 });
 
 // src/client/styles.ts
@@ -1310,6 +1413,8 @@ var CSS = `
   font-size:12px;line-height:18px;
 }
 .dshToolGroupFallbackOutput[data-error=true]{color:var(--dsw-alias-state-error-primary)}
+.dshWorkflowRunItem{display:flex;align-items:center;gap:8px;font-size:14px;line-height:24px;color:var(--dsw-alias-label-secondary)}
+.dshWorkflowRunStatus{color:var(--dsw-alias-label-tertiary)}
 /* ------------------------------------------------------------------ */
 /* User message: product UserStyleBubble replica + 3-line fold.        */
 /* ------------------------------------------------------------------ */
@@ -1323,10 +1428,26 @@ var CSS = `
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
   overflow:hidden;max-height:72px;
 }
-.dshUserRefChip{
-  color:var(--dsw-alias-label-primary);white-space:nowrap;vertical-align:baseline;
-  background:#6187d838;border-radius:6px;margin:0 2px;padding:0 8px;
-  font-size:.85em;line-height:1.6;display:inline-block;
+/* Attachment row (alpha 0.1.3+): image tiles handled by the official
+   gallery slot, generic-file cards by the replica below. */
+.dshUserAttachmentRow{
+  display:flex;flex-wrap:wrap;justify-content:flex-end;
+  gap:8px;max-width:100%;
+}
+.dshUserFileCard{
+  display:inline-flex;align-items:center;gap:10px;max-width:100%;
+  border:1px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-bg-base);border-radius:12px;padding:8px 12px;
+}
+.dshUserFileIcon{flex-shrink:0;color:var(--dsw-alias-label-tertiary)}
+.dshUserFileContent{display:flex;flex-direction:column;min-width:0}
+.dshUserFileName{
+  color:var(--dsw-alias-label-primary);font-size:14px;line-height:20px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.dshUserFileMeta{
+  color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .dshUserFoldToggle{
   display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;
@@ -1487,61 +1608,42 @@ function apply(ctx) {
   setSlotsService(slots);
   setGroupT(locale.bind("fold"));
   setSessionsService(ctx.get("sessions"));
+  if (locale !== void 0) {
+    const chatProbeKey = "message.extraBlock";
+    const chatProbe = locale.bind("chat")(chatProbeKey);
+    const chatT2 = chatProbe !== chatProbeKey ? locale.bind("chat") : void 0;
+    setChatT(chatT2);
+    setConversationT(compositeT(chatT2, locale.bind("conversation")));
+  }
   ctx.effect(() => locale.register("fold", DICTS), "dsh-fold: dictionaries");
   ctx.effect(() => insertStyle(document), "dsh-fold: styles");
-  ctx.effect(
-    () => slots.register(
-      {
+  const registerShadows = () => {
+    const disposers = [];
+    const register = (options, component, label) => {
+      disposers.push(ctx.effect(() => slots.register(options, component), label));
+    };
+    register({ name: "conversation.chat.node", key: "tool-call", priority: -100, locale: "fold", children: { "tool.call.toolview": { kind: "keyed", scope: "session" } } }, ToolCallGroupView, "dsh-fold: tool-call shadow");
+    register({ name: "conversation.chat.node", key: "assistant-step", priority: -100, locale: "conversation" }, AssistantNodeWrapper, "dsh-fold: assistant-step shadow");
+    for (const key of ["user", "steering"]) {
+      register({ name: "conversation.chat.node", key, priority: -100, locale: "conversation" }, UserNodeWrapper, `dsh-fold: ${key} shadow`);
+    }
+    for (const key of ["compaction", "context", "manual-compaction", "command", "model-retry", "turn-error", "turn-max-tokens", "unknown", "workflow-run"]) {
+      register({
         name: "conversation.chat.node",
-        key: "tool-call",
+        key,
         priority: -100,
-        locale: "fold",
-        children: {
-          "tool.call.toolview": { kind: "keyed", scope: "session" }
-        }
-      },
-      ToolCallGroupView
-    ),
-    "dsh-fold: tool-call shadow"
-  );
-  ctx.effect(
-    () => slots.register(
-      {
-        name: "conversation.chat.node",
-        key: "assistant-step",
-        priority: -100,
-        locale: "conversation"
-      },
-      AssistantNodeWrapper
-    ),
-    "dsh-fold: assistant-step shadow"
-  );
-  ctx.effect(
-    () => slots.register(
-      {
-        name: "conversation.chat.node",
-        key: "user",
-        priority: -100,
-        locale: "conversation"
-      },
-      UserNodeWrapper
-    ),
-    "dsh-fold: user shadow"
-  );
-  for (const key of ["compaction", "context", "manual-compaction", "command", "model-retry", "turn-error", "turn-max-tokens", "unknown", "workflow-run"]) {
-    ctx.effect(
-      () => slots.register(
-        {
-          name: "conversation.chat.node",
-          key,
-          priority: -100,
-          locale: "conversation",
-          ...key === "command" ? { children: { "conversation.chat.commandview": { kind: "keyed", scope: "session" } } } : {}
-        },
-        NoticeNodeWrapper
-      ),
-      `dsh-fold: ${key} shadow`
-    );
+        locale: "conversation",
+        ...key === "command" ? { children: { "conversation.chat.commandview": { kind: "keyed", scope: "session" } } } : {}
+      }, NoticeNodeWrapper, `dsh-fold: ${key} shadow`);
+    }
+    return () => {
+      for (const dispose of disposers.reverse()) dispose();
+    };
+  };
+  if (typeof slots.inject === "function") {
+    ctx.effect(() => slots.inject?.("conversation.chat.node", registerShadows), "dsh-fold: chat shadow lifecycle");
+  } else {
+    ctx.effect(registerShadows, "dsh-fold: chat shadows");
   }
 }
 return module.exports

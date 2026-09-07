@@ -92,10 +92,13 @@ official primitives).
   bottom gap intact — browsers whose legacy line-clamp behavior would show
   a partial 4th line flush against the bubble bottom get clipped to 3 lines
   (verified in headless Chromium). The bubble is a faithful replica of the
-  product's `UserStyleBubble` built from **official primitives**
-  (`MessageText`, ref chips for `/name` `@name` tokens, `JsonBlock` extras,
-  the official `ImageGallery`, the product time + copy actions with the
-  official `writeClipboard`) — replication, not delegation, because
+  product's `UserStyleBubble` built from **official primitives** (the
+  official `projectUserText` — `/name`/`@name`/session ref chips with the
+  exact per-release gating of the host bubble —, `JsonBlock` extras, the
+  official attachment row: slot-backed `ImageGallery` calls on rc, per-image
+  compact calls plus generic-file cards on alpha 0.1.3, the product time +
+  copy actions with the official `writeClipboard`) — replication, not
+  delegation, because
   Chromium's line-clamp does not clamp content inside a nested flex
   container (the official row is `display:flex`; verified empirically in
   headless Chromium). Short messages render untouched (clamp is a no-op,
@@ -116,13 +119,17 @@ official primitives).
 
 ## DSH version
 
-Adapted to all three DSH release channels: **latest `0.1.1-rc.2`**, **new
-`0.1.2-rc.1`** (current new RC), and **alpha `0.1.2-alpha.5`** (current
-alpha; `useChat` chat target, `chat.legacy.turnEnds`, the `turn-process`
-controller node, product compact-transcript fold). latest/new use the RC
-`useSession.chat` snapshot shape; alpha uses the `useChat` chat snapshot. The version differences are sealed in
-`src/client/snapshot-face.ts` (snapshot normalization) and
-`src/client/registry.ts` (`compositeT` namespace fallback); the runtime
+Adapted to all three DSH release channels: **latest `0.1.2-rc.1`** (npm
+`latest` / `next` tags), and **alpha `0.1.3-alpha.2`** (npm `alpha` tag;
+`useChat` chat target, `chat.legacy.turnEnds`, the `turn-process` controller
+node, product compact-transcript fold, and the 0.1.3 user-bubble update —
+official `projectUserText` signature growth, the `loadImage` seat owner kit,
+`file` content blocks with generic-file cards). The rc channel uses the
+`useSession.chat` snapshot shape; alpha uses the `useChat` chat snapshot.
+The version differences are sealed in
+`src/client/snapshot-face.ts` (snapshot normalization),
+`src/client/registry.ts` (`compositeT` namespace fallback) and
+`src/client/UserNodeWrapper.tsx` (user-text + attachment kits); the runtime
 overlay validates the live SlotCore shape and fails closed (plugin stays
 inert) if the relevant internals change.
 

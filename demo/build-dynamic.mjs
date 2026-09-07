@@ -30,10 +30,12 @@ const wrapped = `const __dynRequire = (spec) => {
   if (spec === 'react' || spec === 'react/jsx-runtime') return React
   if (spec === '@deepseek-ai/dsh-client-ui-slots') return slotsMod
   if (spec === '@deepseek-ai/dsh-client-ui-primitives') return primMod
+  if (spec === '@deepseek-ai/dsh-client-ui-attachment') return attachmentMod
   throw new Error('dynamic demo: unhandled require ' + spec)
 }
 const slotsMod = await globalThis.__DSH_MODULES__.import('@deepseek-ai/dsh-client-ui-slots')
 const primMod = await globalThis.__DSH_MODULES__.import('@deepseek-ai/dsh-client-ui-primitives')
+const attachmentMod = await globalThis.__DSH_MODULES__.import('@deepseek-ai/dsh-client-ui-attachment')
 var module = { exports: {} }
 var exports = module.exports
 Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })

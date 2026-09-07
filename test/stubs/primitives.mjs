@@ -24,8 +24,39 @@ export function DisclosureRow({ icon, title, open, expandable, onToggle, expandO
   return React.createElement('div', { 'data-open': open || undefined }, row, open ? children : null)
 }
 
-export function MessageText({ text }) {
-  return React.createElement('div', { 'data-message-text': true }, text)
+export function projectUserText(text, sessionLabels = [], slashNames = [], slashKind = 'skill') {
+  const re = /(^|\s)(\/[\w-]+(?=\s|$)|@[^\s]+)/gu
+  const parts = []
+  let cursor = 0
+  let match
+  while ((match = re.exec(text)) !== null) {
+    const tokenStart = match.index + (match[1]?.length ?? 0)
+    const label = match[2]
+    const isSlash = label.startsWith('/')
+    if (isSlash && !slashNames.includes(label.slice(1))) continue
+    if (tokenStart > cursor) parts.push(React.createElement('span', { key: `t${cursor}` }, text.slice(cursor, tokenStart)))
+    const name = label.slice(1)
+    const chipKind = isSlash ? slashKind : sessionLabels.includes(name) ? 'session' : 'file'
+    parts.push(React.createElement('span', { key: `r${tokenStart}`, 'data-ref-chip': chipKind }, isSlash ? label : name))
+    cursor = tokenStart + label.length
+  }
+  if (parts.length === 0) return React.createElement('span', null, text)
+  if (cursor < text.length) parts.push(React.createElement('span', { key: `t${cursor}` }, text.slice(cursor)))
+  return React.createElement(React.Fragment, null, parts)
+}
+
+export function fileSizeText(bytes) {
+  if (bytes < 1024) return `${bytes}B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)}KB`
+  const mb = kb / 1024
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}MB`
+  const gb = mb / 1024
+  return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}GB`
+}
+
+export function DocumentFileIcon({ className }) {
+  return React.createElement('svg', { className, 'data-document-icon': 'true' })
 }
 
 export function JsonBlock({ label, payload }) {

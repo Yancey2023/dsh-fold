@@ -147,10 +147,26 @@ export const CSS = `
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
   overflow:hidden;max-height:72px;
 }
-.dshUserRefChip{
-  color:var(--dsw-alias-label-primary);white-space:nowrap;vertical-align:baseline;
-  background:#6187d838;border-radius:6px;margin:0 2px;padding:0 8px;
-  font-size:.85em;line-height:1.6;display:inline-block;
+/* Attachment row (alpha 0.1.3+): image tiles handled by the official
+   gallery slot, generic-file cards by the replica below. */
+.dshUserAttachmentRow{
+  display:flex;flex-wrap:wrap;justify-content:flex-end;
+  gap:8px;max-width:100%;
+}
+.dshUserFileCard{
+  display:inline-flex;align-items:center;gap:10px;max-width:100%;
+  border:1px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-bg-base);border-radius:12px;padding:8px 12px;
+}
+.dshUserFileIcon{flex-shrink:0;color:var(--dsw-alias-label-tertiary)}
+.dshUserFileContent{display:flex;flex-direction:column;min-width:0}
+.dshUserFileName{
+  color:var(--dsw-alias-label-primary);font-size:14px;line-height:20px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.dshUserFileMeta{
+  color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:16px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .dshUserFoldToggle{
   display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;

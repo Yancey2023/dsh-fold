@@ -1,13 +1,14 @@
 /**
  * Minimal type declarations for the DSH packages this plugin imports.
  *
- * The REAL contracts live in the installed DSH (verified against 0.1.1-rc.2
- * AND 0.1.2-alpha.4; see README's "Seam and data model" section). These
- * shims keep the repo typecheckable without a full DSH checkout; the runtime
- * contract is enforced by the DSH page itself (fail-closed guards in
- * slots-core-overlay.ts). The snapshot/seam differences between the two
- * releases are handled in snapshot-face.ts (seat kit normalization) and
- * registry.ts (namespace fallback), never here.
+ * The REAL contracts live in the installed DSH (verified against 0.1.1-rc.2,
+ * 0.1.2-alpha.5 / 0.1.2-rc.1 AND 0.1.3-alpha.2; see README's "Seam and data
+ * model" section). These shims keep the repo typecheckable without a full
+ * DSH checkout; the runtime contract is enforced by the DSH page itself
+ * (fail-closed guards in slots-core-overlay.ts). The snapshot/seam
+ * differences between the releases are handled in snapshot-face.ts (seat kit
+ * normalization), registry.ts (namespace fallback) and UserNodeWrapper.tsx
+ * (attachment / user-text kits), never here.
  */
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -51,6 +52,26 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   export const IconCopyOutline16: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const IconApiOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const IconQuestionOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
+  /**
+   * Display projection of reference forms in sent user text (the OFFICIAL
+   * primitive, exported by every supported release).
+   *
+   * Signature history: rc `(text, sessionLabels)`; alpha 0.1.3
+   * `(text, sessionLabels, slashNames, slashKind)` — the plugin always calls
+   * the 4-arg form; rc ignores the trailing arguments (every `/name`/
+   * `@name` token decorates), alpha gates `/name` tokens on `slashNames`
+   * exactly like the host product.
+   */
+  export function projectUserText(
+    text: string,
+    sessionLabels?: readonly string[],
+    slashNames?: readonly string[],
+    slashKind?: 'skill' | 'command',
+  ): ReactNode
+  /** Alpha 0.1.3 add: compact byte text (`312B`, `4.2KB`, …). */
+  export function fileSizeText(bytes: number): string
+  /** Alpha 0.1.3 add: decorative document glyph for generic-file cards. */
+  export const DocumentFileIcon: FC<{ className?: string }>
   export const DisclosureRow: FC<{
     icon?: ReactNode
     title?: ReactNode
@@ -68,7 +89,6 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     chevronClassName?: string
     titleClassName?: string
   }>
-  export const MessageText: FC<{ text: string }>
   export const JsonBlock: FC<{
     label: string
     payload: unknown
@@ -115,5 +135,11 @@ declare module '@deepseek-ai/dsh-attachment' {
     id: string
     url?: string
     name?: string
+  }
+  /** Alpha 0.1.3 add: durable verbatim-file reference (passed through only). */
+  export interface FileAttachmentRef {
+    attachmentId: string
+    name: string
+    bytes: number
   }
 }
