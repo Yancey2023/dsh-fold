@@ -18,6 +18,9 @@
  *     fileMentions, t in the conversation namespace). React.memo components
  *     are objects, not functions — never shape-check the component.
  *
+ * Turn-level ("big") folding is owned by the product on every supported
+ * channel; this wrapper only handles the small per-run groups.
+ *
  * The registry lookup degrades fail-soft: if the official entry is ever
  * missing, text nodes render nothing rather than breaking the flow.
  */
@@ -26,11 +29,10 @@ import * as React from 'react'
 import { groupOf, isGroupLeader, isTransparentAssistant, latestWorkNode } from './group'
 import type { AssistantBlockLike } from './group'
 import type { ChatNodeLike } from './group'
-import { GroupBar, GroupItems, TurnFoldBar } from './ToolCallGroupView'
+import { GroupBar, GroupItems } from './ToolCallGroupView'
 import { AutoLoadHost } from './AutoLoadHost'
 import { useSnapshotFace } from './snapshot-face'
 import type { SelectorHook } from './snapshot-face'
-import { isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 import { getGroupT } from './translate'
 import { compositeT, getChatT, officialNodeEntry, setConversationT } from './registry'
 import type { TranslateLike } from './registry'
@@ -44,10 +46,8 @@ export interface AssistantNodeWrapperProps {
   useSession?: SelectorHook
   /** Chat-target selector hook (the transcript, on both supported channels). */
   useChat?: SelectorHook
-  /** Session id (big-fold state is keyed per session). */
+  /** Session id (auto-load host keying). */
   sessionId?: string
-  /** Alpha owner kit: the product's own turn-process controller. */
-  turnProcess?: { foldable?: boolean }
   /** Everything else the renderer passed (delegated to the official view). */
   [key: string]: unknown
 }
@@ -92,18 +92,9 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
-  // The alpha channel's own compact-transcript turn folding is active for this
-  // turn: yield the big fold entirely to the product (no double bars); the
-  // small tool/think groups stay ours.
-  const productFoldActive = props.turnProcess !== undefined
   const group = React.useMemo(() => (isTransparentAssistant(node) ? groupOf(chat, node.key) : null), [chat, node])
-  const turnInfo = React.useMemo(
-    () => (productFoldActive ? null : turnProcessOf(chat, node.key)),
-    [chat, node, productFoldActive],
-  )
   const live = React.useMemo(() => latestWorkNode(chat), [chat])
   const [expanded, setExpanded] = React.useState(false)
-  const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
   const onKeyDown = React.useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -111,20 +102,6 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
       setExpanded((value) => !value)
     }
   }, [])
-  const turnKey = turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`
-  const turnToggle = React.useCallback(() => {
-    if (turnKey === undefined) return
-    setTurnExpanded(turnKey, !turnExpanded)
-  }, [turnKey, turnExpanded])
-  const turnKeyDown = React.useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        turnToggle()
-      }
-    },
-    [turnToggle],
-  )
 
   const t = getGroupT() ?? ((key: string, params?: Record<string, unknown>) => (params && 'count' in params ? String(params.count) : key))
 
@@ -143,35 +120,12 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
       : null
 
   let output: React.ReactNode
-  // The turn's final summary: official text, never folded.
-  if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
-    output = renderOfficial(props)
-  } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-    // A process node of a closed, summarized turn: hidden behind the big fold
-    // (only the first seat renders the big fold bar).
-    const first = node.key === turnInfo.firstKey
-    if (!turnExpanded) {
-      output = first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
-    } else {
-      const content = group === null ? renderOfficial(props) : thinkContent
-      if (content === null) {
-        // Non-leader think member while the big fold is expanded: still nothing
-        // to render — mark the seat so its flowItem leaves no gap.
-        output = first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
-      } else {
-        output = React.createElement(
-          React.Fragment,
-          null,
-          first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-          content,
-        )
-      }
-    }
-  } else if (group === null) {
-    // No big fold: current behavior. Non-leader think seats fold to nothing
-    // (marked so the flowItem is hidden instead of leaving a gap).
+  if (group === null) {
+    // Not part of a foldable run (text-bearing assistant / interrupted step):
+    // official text rendering with reasoning folded away.
     output = renderOfficial(props)
   } else if (thinkContent === null) {
+    // Non-leader think member: hidden (marked so the flowItem leaves no gap).
     output = React.createElement(FoldedSeat, null)
   } else {
     output = thinkContent

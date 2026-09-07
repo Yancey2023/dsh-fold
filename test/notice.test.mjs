@@ -3,14 +3,15 @@
  * non-text notice cells (compaction / context / manual-compaction / command):
  *
  *   open turn        -> one-line folded bar (count 1), expand -> official view
- *   closed turn      -> joins the big fold (bar at first seat, hidden members)
+ *   closed turn      -> product-owned turn fold; notices still small-fold
  *   command          -> official CommandNodeView keeps its renderSlot binding
+ *   model-retry      -> NEVER folds (official view, always visible)
  *   fail-soft        -> missing official entry renders the hidden marker
  */
 import assert from 'node:assert/strict'
 import React from 'react'
 import { create, act } from 'react-test-renderer'
-import { NoticeNodeWrapper, setSlotsService, setGroupT, setTurnExpanded } from '../lib/client-notice.mjs'
+import { NoticeNodeWrapper, setSlotsService, setGroupT } from '../lib/client-notice.mjs'
 
 function noticeNode(key, kind, turn) {
   return { key, kind, location: { kind: 'turn', turn: { turn } }, data: {} }
@@ -41,7 +42,6 @@ function makeSession(order, nodes, turnEnds) {
 const DICTS = {
   running: '正在运行',
   folded: '{count} 个块已被折叠',
-  turnFolded: '该轮次工作过程已折叠',
 }
 setGroupT((key, params) => {
   const template = DICTS[key] ?? key
@@ -134,8 +134,9 @@ setSlotsService({
 }
 
 // ---------------------------------------------------------------------------
-// Closed summarized turn: the compaction is a process node — the FIRST seat
-// renders the big fold bar, other process seats render the hidden marker.
+// Closed summarized turn: turn folding is PRODUCT-owned on every supported
+// channel — the notice still renders its own small fold (or joins the merged
+// group), never a plugin turn-level bar.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(['c1', 'ctx1', 'aSum'], [noticeNode('c1', 'compaction', 1), noticeNode('ctx1', 'context', 1), textAssistant('aSum', 1)], new Map([[1, 999]]))
@@ -144,16 +145,8 @@ setSlotsService({
     first = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'c1')))
   })
   let text = textOf(first.toJSON())
-  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar at the first process seat')
-  assert.ok(!text.includes('1 个块已被折叠'), 'small bar hidden inside the big fold')
-
-  // Expand the big fold: the small fold reappears (its own collapsed bar).
-  await act(async () => {
-    first.toJSON().props.onClick()
-  })
-  text = textOf(first.toJSON())
-  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar stays')
-  assert.ok(text.includes('2 个块已被折叠'), 'small bar revealed inside the big fold (compaction + context merged into one group)' )
+  assert.ok(!text.includes('该轮次工作过程已折叠'), 'no plugin turn-level bar')
+  assert.ok(text.includes('2 个块已被折叠'), 'compaction + context still merge into one small fold bar')
   assert.ok(!text.includes('OFFICIAL_COMPACTION'), 'small bar still collapsed')
 
   // Expand the small bar -> the official compaction view.
@@ -164,23 +157,20 @@ setSlotsService({
   assert.ok(text.includes('OFFICIAL_COMPACTION[c1]'), 'official view shown')
   first.unmount()
 
-  // Non-first process seat (context): hidden marker while the big fold is
-  // collapsed.
-  setTurnExpanded(':1', false)
+  // Non-leader member seat (context): hidden marker.
   let member
   await act(async () => {
     member = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'ctx1')))
   })
-  assert.ok(member.toJSON().props['data-tool-group-hidden'] !== undefined, 'process member hidden (no gap)')
+  assert.ok(member.toJSON().props['data-tool-group-hidden'] !== undefined, 'non-leader member hidden (no gap)')
   member.unmount()
 }
 
 // ---------------------------------------------------------------------------
 // REGRESSION (user report): a merged run = compaction + think + tools + context
-// in ONE group. When the big fold is EXPANDED, the small group bar must render
-// ONLY at the group leader seat (the first tool). Notice process seats that
-// are NOT the leader (compaction seat = firstKey, context seat = member) must
-// NOT duplicate the "N 个块已被折叠" bar.
+// in ONE group. The small group bar renders ONLY at the group leader seat
+// (the first tool). Notice seats that are NOT the leader (compaction seat,
+// context seat) must NOT duplicate the "N 个块已被折叠" bar.
 // ---------------------------------------------------------------------------
 {
   const snapshot = makeSession(
@@ -196,24 +186,15 @@ setSlotsService({
     new Map([[1, 999]]),
   )
 
-  // Compaction seat: firstKey (renders the big bar) but NOT the group leader
-  // (leader = first tool t1). Expanded big fold -> big bar WITHOUT any small
-  // "N 个块已被折叠" duplication, and WITHOUT the [data-tool-group-hidden]
-  // marker sitting NEXT TO the bar: the package CSS
-  // `[data-chat-flow-key]:has([data-tool-group-hidden]){display:none}` would
-  // then hide this whole flow item (big bar included) and the turn could
-  // never be collapsed again — the reported regression.
-  setTurnExpanded(':1', true)
+  // Compaction seat: not the group leader (leader = first tool t1) -> hidden
+  // marker, no duplicated bar.
   let comp
   await act(async () => {
     comp = create(React.createElement(NoticeNodeWrapper, makeProps(snapshot, 'comp')))
   })
-  let text = textOf(comp.toJSON())
-  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar at the first process seat')
-  const compBars = findAll(comp.toJSON(), byClass('dshToolGroupRow'))
-  assert.equal(compBars.length, 0, 'no small fold bar at the compaction seat (it is not the group leader)')
-  const hiddenMarkers = findAll(comp.toJSON(), (n) => typeof n.props?.['data-tool-group-hidden'] !== 'undefined')
-  assert.equal(hiddenMarkers.length, 0, 'no hidden marker next to the big fold bar (the bar stays clickable)')
+  const compJson = comp.toJSON()
+  assert.ok(compJson.props['data-tool-group-hidden'] !== undefined, 'compaction member hidden (its bar belongs to the tool leader)')
+  assert.equal(findAll(compJson, byClass('dshToolGroupRow')).length, 0, 'no duplicated bar at the compaction seat')
   comp.unmount()
 
   // Context seat: process member, not the leader -> hidden marker, no bar.
@@ -225,8 +206,6 @@ setSlotsService({
   assert.ok(ctxJson.props['data-tool-group-hidden'] !== undefined, 'context member hidden (its bar belongs to the tool leader)')
   assert.equal(findAll(ctxJson, byClass('dshToolGroupRow')).length, 0, 'no duplicated bar at the context member seat')
   ctx.unmount()
-
-  setTurnExpanded(':1', false)
 }
 
 // ---------------------------------------------------------------------------

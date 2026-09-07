@@ -13,8 +13,8 @@ import { create, act } from 'react-test-renderer'
 import { ToolCallGroupView } from '../lib/client-component.mjs'
 
 const DICTS = {
-  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠', turnFolded: '该轮次工作过程已折叠' },
-  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded', turnFolded: 'Turn work process folded' },
+  zh: { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' },
+  en: { running: 'Running', group: 'tool call group', folded: '{count} blocks folded' },
 }
 
 function toolNode(key, turn, root) {
@@ -279,50 +279,6 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// BIG FOLD: a closed, summarized turn folds its process behind one bar.
-// The tool leader is also the first process node -> renders the big bar;
-// expanding reveals the small group bar.
-// ---------------------------------------------------------------------------
-{
-  function textAssistant(key, text) {
-    return { key, kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } }, data: { blocks: [{ kind: 'text', text }], status: 'settled' } }
-  }
-  const turnEnds = new Map([[1, 999]])
-  const snapshot = makeSession(
-    ['t1', 't2', 't3', 'aSum'],
-    [toolNode('t1', 1, settled('read')), toolNode('t2', 1, settled('grep')), toolNode('t3', 1, settled('bash')), textAssistant('aSum', '最终总结')],
-    turnEnds,
-  )
-  // act-wrapped create: the external-store subscription commits inside act.
-  let root
-  act(() => {
-    root = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't1')))
-  })
-  // Collapsed: only the big fold bar; the small bar is hidden inside.
-  let text = textOf(root.toJSON())
-  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar shown')
-  assert.ok(!text.includes('3 个块已被折叠'), 'small bar hidden inside the big fold')
-  assert.ok(!text.includes('read'), 'no tool content visible')
-  // Expand the big fold -> the small fold appears (fragment flattens: the
-  // bar is the top-level element).
-  act(() => {
-    root.toJSON().props.onClick()
-  })
-  text = textOf(root.toJSON())
-  assert.ok(text.includes('该轮次工作过程已折叠'), 'big fold bar stays (chevron down)')
-  assert.ok(text.includes('3 个块已被折叠'), 'small fold revealed inside the big fold')
-  root.unmount()
-
-  // A non-first process member seat renders null while the big fold is collapsed.
-  let memberRoot
-  act(() => {
-    memberRoot = create(React.createElement(ToolCallGroupView, makeProps(snapshot, 't2')))
-  })
-  assert.ok(memberRoot.toJSON().props['data-tool-group-hidden'] !== undefined, 'process member hidden behind the big fold (no gap)')
-  memberRoot.unmount()
-}
-
-// ---------------------------------------------------------------------------
 // REGRESSION (user report): a merged run = compaction + think + tools + context
 // forms ONE group. The leader seat (first tool) renders exactly ONE merged
 // fold bar with the whole-run count — the notice members never get their own
@@ -355,17 +311,16 @@ function childrenOf(node) {
 // Current-channels seat kit (both rc.1 and alpha.2): `useChat` carries the
 // chat target directly (order/nodes/legacy.turnEnds), `useSession` carries
 // only the window flags — the same kit every render test drives through
-// makeProps. These cases add the product turn-process fields on top.
+// makeProps.
 // ---------------------------------------------------------------------------
 
-/** Seat-kit props with explicit window flags + product turn process. */
-function makeAlphaProps(chatSnapshot, sessionSnapshot, nodeKey, turnProcess) {
+/** Seat-kit props with explicit window flags. */
+function makeAlphaProps(chatSnapshot, sessionSnapshot, nodeKey) {
   const base = makeProps(chatSnapshot, nodeKey)
   return {
     ...base,
     useChat: (sel, eq) => sel(chatSnapshot),
     useSession: (sel, eq) => sel(sessionSnapshot),
-    ...(turnProcess === undefined ? {} : { turnProcess }),
   }
 }
 
@@ -387,13 +342,12 @@ function makeAlphaProps(chatSnapshot, sessionSnapshot, nodeKey, turnProcess) {
     root = create(React.createElement(ToolCallGroupView, makeAlphaProps(chat, session, 't1')))
   })
   let text = textOf(root.toJSON())
-  assert.ok(text.includes('2 个块已被折叠'), 'alpha: turn-process node is transparent (not counted, not a boundary)')
-  assert.ok(!text.includes('该轮次工作过程已折叠'), 'alpha: open turn has no big fold')
+  assert.ok(text.includes('2 个块已被折叠'), 'turn-process node is transparent (not counted, not a boundary)')
+  assert.ok(!text.includes('该轮次工作过程已折叠'), 'open turn: no plugin turn bar')
   root.unmount()
 
-  // (b) The product's own compact-transcript fold is ACTIVE for the turn:
-  // the plugin yields the big fold — no "该轮次工作过程已折叠" bar, the small
-  // fold still leads at the first tool seat.
+  // (b) A closed turn: the turn-level fold is PRODUCT-owned on every channel,
+  // so the plugin only ever renders its own small tool group — no turn bar.
   const closedChat = (() => {
     const nodes = [
       toolNode('t1', 1, settled('read')),
@@ -404,11 +358,11 @@ function makeAlphaProps(chatSnapshot, sessionSnapshot, nodeKey, turnProcess) {
     return { order: ['t1', 't2', 'aSum'], nodes: { get: (k) => map.get(k) }, legacy: { turnEnds: new Map([[1, 42]]) } }
   })()
   act(() => {
-    root = create(React.createElement(ToolCallGroupView, makeAlphaProps(closedChat, session, 't1', { foldable: true })))
+    root = create(React.createElement(ToolCallGroupView, makeAlphaProps(closedChat, session, 't1')))
   })
   text = textOf(root.toJSON())
-  assert.ok(!text.includes('该轮次工作过程已折叠'), 'alpha: product fold active -> plugin big fold yields')
-  assert.ok(text.includes('2 个块已被折叠'), 'alpha: small tool group still renders under the product fold')
+  assert.ok(!text.includes('该轮次工作过程已折叠'), 'closed turn: no plugin turn bar (product owns it)')
+  assert.ok(text.includes('2 个块已被折叠'), 'small tool group still renders')
   root.unmount()
 
   // (c) Window flags flow from the SESSION snapshot (alpha): the AutoLoadHost

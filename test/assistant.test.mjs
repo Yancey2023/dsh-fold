@@ -10,7 +10,6 @@ import assert from 'node:assert/strict'
 import React from 'react'
 import { create, act } from 'react-test-renderer'
 import { AssistantNodeWrapper, setGroupT, setSlotsService } from '../lib/client-assistant.mjs'
-import { setTurnExpanded } from '../lib/client-turn-fold.mjs'
 
 function toolNode(key, turn, root) {
   return { key, kind: 'tool-call', location: { kind: 'step', turn: { turn }, step: { step: 1 } }, data: { root } }
@@ -55,7 +54,7 @@ function makeProps(snapshot, nodeKey) {
   }
 }
 
-const GROUP_DICTS = { running: '正在运行', folded: '{count} 个块已被折叠', turnFolded: '该轮次工作过程已折叠' }
+const GROUP_DICTS = { running: '正在运行', folded: '{count} 个块已被折叠' }
 setGroupT((key, params) => {
   const template = GROUP_DICTS[key] ?? key
   return params ? template.replace(/\{(\w+)\}/g, (_m, n) => String(params[n] ?? '')) : template
@@ -178,7 +177,9 @@ setSlotsService({
 }
 
 // ---------------------------------------------------------------------------
-// BIG FOLD: a closed, summarized turn folds intermediate text behind the bar.
+// Current channels: product-owned turn folding means the wrapper never renders
+// a turn-level bar — a closed, summarized turn still renders its own small
+// groups (the product owns the big fold on every supported channel).
 // ---------------------------------------------------------------------------
 {
   const turnEnds = new Map([[1, 999]])
@@ -191,50 +192,23 @@ setSlotsService({
     ],
     turnEnds,
   )
-  // First process node (intermediate text): collapsed -> big bar only.
+  // The intermediate TEXT node never folds into a turn bar — official render.
   let midRoot
   act(() => {
     midRoot = create(React.createElement(AssistantNodeWrapper, makeProps(snapshot, 'aMid')))
   })
-  const collapsed = textOf(midRoot.toJSON())
-  assert.ok(collapsed.includes('该轮次工作过程已折叠'), 'big fold bar shown')
-  assert.ok(!collapsed.includes('中间过程'), 'intermediate text hidden behind the big fold')
-  // Expand -> the intermediate text shows (reasoning still folded).
-  act(() => {
-    midRoot.toJSON().props.onClick()
-  })
-  const expanded = textOf(midRoot.toJSON())
-  assert.ok(expanded.includes('OFFICIAL_ASSISTANT[text]'), 'intermediate text (official rendering) revealed when expanded')
+  const midText = textOf(midRoot.toJSON())
+  assert.equal(midRoot.toJSON(), 'OFFICIAL_ASSISTANT[text]', 'intermediate text delegates (no plugin turn bar)')
+  assert.ok(!midText.includes('该轮次工作过程已折叠'), 'no big fold bar from the plugin')
   midRoot.unmount()
 
-  // The summary stays visible in both states.
+  // The summary stays official-rendered too.
   let sumRoot
   act(() => {
     sumRoot = create(React.createElement(AssistantNodeWrapper, makeProps(snapshot, 'aSum')))
   })
   assert.equal(sumRoot.toJSON(), 'OFFICIAL_ASSISTANT[text]', 'summary always visible')
   sumRoot.unmount()
-}
-
-// Non-first process node (think-only seat inside a folded turn) -> hidden.
-{
-  setTurnExpanded(':1', false)
-  const turnEnds = new Map([[1, 999]])
-  const snapshot = makeSession(
-    ['t1', 'aTh2', 'aSum'],
-    [
-      toolNode('t1', 1, settled('read')),
-      assistantNode('aTh2', 1, [think('second think')]),
-      assistantNode('aSum', 1, [textBlock('总结')]),
-    ],
-    turnEnds,
-  )
-  let root
-  act(() => {
-    root = create(React.createElement(AssistantNodeWrapper, makeProps(snapshot, 'aTh2')))
-  })
-  assert.ok(root.toJSON().props['data-tool-group-hidden'] !== undefined, 'non-first process think seat hidden behind the big fold (no gap)')
-  root.unmount()
 }
 
 console.log('assistant.test: all assertions passed')

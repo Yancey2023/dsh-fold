@@ -51,7 +51,7 @@ module.exports = __toCommonJS(index_exports);
 var import_dsh_client_ui_slots = __dynRequire("@deepseek-ai/dsh-client-ui-slots");
 
 // src/client/AssistantNodeWrapper.tsx
-var React4 = __toESM(__dynRequire("react"), 1);
+var React3 = __toESM(__dynRequire("react"), 1);
 
 // src/client/group.ts
 var TOOL_KIND = "tool-call";
@@ -181,7 +181,7 @@ function isGroupLeader(group, nodeKey) {
 }
 
 // src/client/ToolCallGroupView.tsx
-var React3 = __toESM(__dynRequire("react"), 1);
+var React2 = __toESM(__dynRequire("react"), 1);
 var import_dsh_client_ui_primitives = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
 
 // src/client/tool-row.ts
@@ -462,83 +462,6 @@ function useSnapshotFace(props) {
   return flags.hasMore || flags.loadingOlder || chat !== EMPTY_CHAT ? { chat, hasMore: flags.hasMore, loadingOlder: flags.loadingOlder } : EMPTY_FACE;
 }
 
-// src/client/turn-fold.ts
-var React2 = __toESM(__dynRequire("react"), 1);
-function isThinkOnly(node) {
-  return isTransparentAssistant(node);
-}
-var FOLDABLE_KINDS = /* @__PURE__ */ new Set([
-  "tool-call",
-  "assistant-step",
-  "compaction",
-  "context",
-  "manual-compaction",
-  "command",
-  "unknown",
-  "workflow-run",
-  // The alpha channel projects a hidden turn-process controller per closed
-  // turn; it belongs to the process span (its seat is the product's own,
-  // hidden in normal mode, so this entry only matters for the span
-  // computation). The rc channel never emits it.
-  "turn-process"
-]);
-function turnProcessOf(session, nodeKey) {
-  const face = session;
-  const node = face.nodes.get(nodeKey);
-  if (node === void 0) return null;
-  const turn = turnOf(node);
-  if (turn === void 0) return null;
-  const turnEnds = face.turnEnds;
-  const closedByMap = turnEnds !== void 0 && turnEnds.has(turn);
-  const closedByLocation = (node.location?.kind === "turn" || node.location?.kind === "step") && node.location.turn?.status === "closed";
-  if (!closedByMap && !closedByLocation) return null;
-  const turnNodes = [];
-  for (const key of face.order) {
-    const member = face.nodes.get(key);
-    if (member === void 0 || turnOf(member) !== turn) continue;
-    if (FOLDABLE_KINDS.has(member.kind)) turnNodes.push(member);
-  }
-  let summaryKey = null;
-  for (let i = turnNodes.length - 1; i >= 0; i -= 1) {
-    const candidate = turnNodes[i];
-    if (candidate.kind !== "assistant-step") continue;
-    if (isThinkOnly(candidate)) continue;
-    summaryKey = candidate.key;
-    break;
-  }
-  if (summaryKey === null) return null;
-  const keys = turnNodes.filter((member) => member.key !== summaryKey).map((member) => member.key);
-  if (keys.length === 0) return null;
-  return { turn, summaryKey, firstKey: keys[0], keys };
-}
-function isProcessNode(info, nodeKey) {
-  return info !== null && info.keys.includes(nodeKey);
-}
-function isTurnSummary(info, nodeKey) {
-  return info !== null && info.summaryKey === nodeKey;
-}
-var expandedTurns = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
-function setTurnExpanded(key, expanded) {
-  if (expandedTurns.get(key) === expanded) return;
-  expandedTurns.set(key, expanded);
-  for (const fn of [...listeners]) fn();
-}
-function useTurnExpanded(key) {
-  return React2.useSyncExternalStore(
-    (callback) => {
-      if (key === void 0) return () => {
-      };
-      const fn = () => callback();
-      listeners.add(fn);
-      return () => {
-        listeners.delete(fn);
-      };
-    },
-    () => key === void 0 ? false : expandedTurns.get(key) ?? false
-  );
-}
-
 // src/client/ToolCallGroupView.tsx
 function FallbackToolCard({ toolName, block, t }) {
   const settled = "kind" in block;
@@ -547,12 +470,12 @@ function FallbackToolCard({ toolName, block, t }) {
   if (!settled) argsText = block.argsRaw ?? "";
   else if (block.call?.argsRaw) argsText = block.call.argsRaw;
   const output = settled ? flattenContent(block.content) : "";
-  return React3.createElement(
+  return React2.createElement(
     "div",
     { className: "dshToolGroupFallback" },
-    React3.createElement("div", { className: "dshToolGroupFallbackTitle" }, `${toolName}${error ? " \u2715" : ""}`),
-    argsText !== "" ? React3.createElement("pre", { className: "dshToolGroupFallbackArgs" }, argsText) : null,
-    settled && output !== "" ? React3.createElement("pre", { className: "dshToolGroupFallbackOutput", "data-error": error || void 0 }, output) : null
+    React2.createElement("div", { className: "dshToolGroupFallbackTitle" }, `${toolName}${error ? " \u2715" : ""}`),
+    argsText !== "" ? React2.createElement("pre", { className: "dshToolGroupFallbackArgs" }, argsText) : null,
+    settled && output !== "" ? React2.createElement("pre", { className: "dshToolGroupFallbackOutput", "data-error": error || void 0 }, output) : null
   );
 }
 function flattenContent(content) {
@@ -567,7 +490,7 @@ function flattenContent(content) {
   }
   return "";
 }
-var ToolCallBranch = React3.memo(function ToolCallBranch2({
+var ToolCallBranch = React2.memo(function ToolCallBranch2({
   renderSlot,
   block,
   selectedCallId,
@@ -577,7 +500,7 @@ var ToolCallBranch = React3.memo(function ToolCallBranch2({
   t
 }) {
   const name2 = callName(block);
-  const owner = React3.useMemo(
+  const owner = React2.useMemo(
     () => ({
       callId: block.callId,
       toolName: name2,
@@ -590,11 +513,11 @@ var ToolCallBranch = React3.memo(function ToolCallBranch2({
     }),
     [block, name2, openFile, cwd, inspectCall]
   );
-  const children = block.subCalls !== void 0 && block.subCalls.length > 0 ? React3.createElement(
+  const children = block.subCalls !== void 0 && block.subCalls.length > 0 ? React2.createElement(
     "div",
     { className: "dshToolGroupSubCalls", "data-subcalls": true },
     block.subCalls.map(
-      (child) => React3.createElement(ToolCallBranch2, {
+      (child) => React2.createElement(ToolCallBranch2, {
         key: child.callId,
         renderSlot,
         block: child,
@@ -606,7 +529,7 @@ var ToolCallBranch = React3.memo(function ToolCallBranch2({
       })
     )
   ) : null;
-  return React3.createElement(
+  return React2.createElement(
     "div",
     {
       className: "dshToolGroupCallRow",
@@ -616,7 +539,7 @@ var ToolCallBranch = React3.memo(function ToolCallBranch2({
     },
     renderSlot("tool.call.toolview", owner, {
       entryKey: name2,
-      fallback: React3.createElement(FallbackToolCard, { toolName: name2, block, t })
+      fallback: React2.createElement(FallbackToolCard, { toolName: name2, block, t })
     }),
     children
   );
@@ -631,18 +554,18 @@ function latestLine(text) {
   return newline === -1 ? visible : visible.slice(newline + 1);
 }
 function InlineThink({ text, running, t }) {
-  const [expanded, setExpanded] = React3.useState(false);
+  const [expanded, setExpanded] = React2.useState(false);
   const summary = running ? latestLine(text) : firstLine2(text);
-  return React3.createElement(
+  return React2.createElement(
     "div",
     { className: "dshToolGroupThink", "data-variant": "think", "data-state": running ? "running" : "ok" },
-    running ? React3.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
-    React3.createElement(import_dsh_client_ui_primitives.DisclosureRow, {
+    running ? React2.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
+    React2.createElement(import_dsh_client_ui_primitives.DisclosureRow, {
       rowClassName: "dshToolGroupThinkRow",
       leadingClassName: "dshToolGroupThinkLeading",
       titleClassName: "dshToolGroupThinkTitle",
       chevronClassName: "dshToolGroupThinkChevron",
-      icon: React3.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 }),
+      icon: React2.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 }),
       title: "Think",
       open: expanded,
       expandable: true,
@@ -650,17 +573,17 @@ function InlineThink({ text, running, t }) {
       onToggle: () => {
         setExpanded((value) => !value);
       },
-      collapsedContent: React3.createElement(
-        React3.Fragment,
+      collapsedContent: React2.createElement(
+        React2.Fragment,
         null,
-        React3.createElement("span", { className: "dshToolGroupThinkSeparator", "aria-hidden": true }),
-        React3.createElement(
+        React2.createElement("span", { className: "dshToolGroupThinkSeparator", "aria-hidden": true }),
+        React2.createElement(
           "span",
           { className: "dshToolGroupThinkSummary", "data-follow-end": running || void 0 },
           summary
         )
       ),
-      children: React3.createElement("div", { className: "dshToolGroupThinkBody" }, text)
+      children: React2.createElement("div", { className: "dshToolGroupThinkBody" }, text)
     })
   );
 }
@@ -669,11 +592,11 @@ function ThinkItem({ item, t }) {
   const reasoning = blocks.filter((block) => block.kind === "reasoning" && (block.text ?? "").trim() !== "");
   if (reasoning.length === 0) return null;
   const running = isLiveWorkNode(item.node);
-  return React3.createElement(
-    React3.Fragment,
+  return React2.createElement(
+    React2.Fragment,
     null,
     reasoning.map(
-      (block, index) => React3.createElement(InlineThink, {
+      (block, index) => React2.createElement(InlineThink, {
         key: `${item.key}:${index}`,
         text: block.text ?? "",
         running: running && index === reasoning.length - 1,
@@ -682,26 +605,7 @@ function ThinkItem({ item, t }) {
     )
   );
 }
-var TurnFoldBar = React3.memo(function TurnFoldBar2({ expanded, onToggle, onKeyDown, t }) {
-  const chevron = React3.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
-    className: "dshToolGroupChevron"
-  });
-  return React3.createElement(
-    "div",
-    {
-      className: "dshTurnFoldRow",
-      role: "button",
-      tabIndex: 0,
-      "aria-expanded": expanded,
-      "aria-label": t("turnFolded"),
-      onClick: onToggle,
-      onKeyDown
-    },
-    React3.createElement("span", { className: "dshTurnFoldLabel" }, t("turnFolded")),
-    chevron
-  );
-});
-var LiveRow = React3.memo(function LiveRow2({ node, cwd, t }) {
+var LiveRow = React2.memo(function LiveRow2({ node, cwd, t }) {
   let icon;
   let title;
   let summary;
@@ -711,35 +615,35 @@ var LiveRow = React3.memo(function LiveRow2({ node, cwd, t }) {
     const blocks = node.data?.blocks ?? [];
     const reasoning = blocks.filter((block) => block.kind === "reasoning" && (block.text ?? "").trim() !== "");
     const text = reasoning.length > 0 ? reasoning[reasoning.length - 1].text ?? "" : "";
-    icon = React3.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 });
+    icon = React2.createElement(import_dsh_client_ui_primitives.IconThinkOutline14, { size: 14 });
     title = "Think";
     summary = running ? latestLine(text) : firstLine2(text);
   } else {
     const block = node.data?.root;
     const name2 = block === void 0 ? "" : callName(block);
     const row = runningToolRow(name2, block ?? { callId: node.key, name: name2 }, cwd);
-    icon = React3.createElement(name2 === "ask_user_question" ? import_dsh_client_ui_primitives.IconQuestionOutline14 : import_dsh_client_ui_primitives.IconApiOutline14, { size: 14 });
+    icon = React2.createElement(name2 === "ask_user_question" ? import_dsh_client_ui_primitives.IconQuestionOutline14 : import_dsh_client_ui_primitives.IconApiOutline14, { size: 14 });
     title = row.title;
     summary = row.summary;
   }
-  return React3.createElement(
-    React3.Fragment,
+  return React2.createElement(
+    React2.Fragment,
     null,
-    running ? React3.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
-    React3.createElement("span", { className: "dshToolGroupLiveIcon" }, icon),
-    React3.createElement("span", { className: "dshToolGroupLiveTitle" }, title),
-    React3.createElement("span", { className: "dshToolGroupLiveSep", "aria-hidden": true }),
-    React3.createElement("span", { className: "dshToolGroupLiveSummary" }, summary)
+    running ? React2.createElement("span", { className: "dshToolGroupVisuallyHidden" }, t("running")) : null,
+    React2.createElement("span", { className: "dshToolGroupLiveIcon" }, icon),
+    React2.createElement("span", { className: "dshToolGroupLiveTitle" }, title),
+    React2.createElement("span", { className: "dshToolGroupLiveSep", "aria-hidden": true }),
+    React2.createElement("span", { className: "dshToolGroupLiveSummary" }, summary)
   );
 });
-var GroupBar = React3.memo(function GroupBar2({ group, expanded, onToggle, onKeyDown, t, cwd, live }) {
+var GroupBar = React2.memo(function GroupBar2({ group, expanded, onToggle, onKeyDown, t, cwd, live }) {
   const liveShown = live !== void 0 && !expanded && group.itemKeys.includes(live.key);
   const liveRunning = liveShown && isLiveWorkNode(live);
-  const liveNode = liveShown ? React3.createElement(LiveRow, { node: live, cwd, t }) : null;
-  const chevron = React3.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
+  const liveNode = liveShown ? React2.createElement(LiveRow, { node: live, cwd, t }) : null;
+  const chevron = React2.createElement(expanded ? import_dsh_client_ui_primitives.IconChevronDownOutline14 : import_dsh_client_ui_primitives.IconChevronRightOutline14, {
     className: "dshToolGroupChevron"
   });
-  return React3.createElement(
+  return React2.createElement(
     "div",
     {
       className: "dshToolGroupRow",
@@ -751,50 +655,50 @@ var GroupBar = React3.memo(function GroupBar2({ group, expanded, onToggle, onKey
       onKeyDown,
       "data-state": liveRunning ? "running" : "settled"
     },
-    React3.createElement("div", { className: "dshToolGroupLeft" }, liveNode),
-    React3.createElement(
+    React2.createElement("div", { className: "dshToolGroupLeft" }, liveNode),
+    React2.createElement(
       "div",
       { className: "dshToolGroupRight" },
-      React3.createElement("span", { className: "dshToolGroupCount" }, t("folded", { count: group.count })),
+      React2.createElement("span", { className: "dshToolGroupCount" }, t("folded", { count: group.count })),
       chevron
     )
   );
 });
-var DelegatedNoticeItem = React3.memo(function DelegatedNoticeItem2({ item, conversationT: conversationT2 }) {
+var DelegatedNoticeItem = React2.memo(function DelegatedNoticeItem2({ item, conversationT: conversationT2 }) {
   const t = conversationT2 ?? getConversationT();
   if (t === void 0) return null;
   if (item.cell === "workflow-run") {
     const data = item.node.data ?? {};
-    return React3.createElement(
+    return React2.createElement(
       "div",
       { className: "dshWorkflowRunItem" },
-      React3.createElement("span", { className: "dshWorkflowRunTitle" }, data.name ?? "workflow"),
-      data.status !== void 0 ? React3.createElement("span", { className: "dshWorkflowRunStatus" }, String(data.status)) : null
+      React2.createElement("span", { className: "dshWorkflowRunTitle" }, data.name ?? "workflow"),
+      data.status !== void 0 ? React2.createElement("span", { className: "dshWorkflowRunStatus" }, String(data.status)) : null
     );
   }
   const official = officialNodeEntry(item.cell);
   if (official === void 0 || official.component == null) return null;
   if (item.cell === "command") {
     const renderSlot = (_key, _owner, opts) => opts?.fallback ?? null;
-    return React3.createElement(official.component, { node: item.node, t, renderSlot });
+    return React2.createElement(official.component, { node: item.node, t, renderSlot });
   }
-  return React3.createElement(official.component, { node: item.node, t });
+  return React2.createElement(official.component, { node: item.node, t });
 });
-var GroupItems = React3.memo(function GroupItems2(props) {
+var GroupItems = React2.memo(function GroupItems2(props) {
   const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT: conversationT2 } = props;
-  return React3.createElement(
+  return React2.createElement(
     "div",
     { className: "dshToolGroupItems" },
     group.items.map((item) => {
       if (item.kind === "think") {
-        return React3.createElement(ThinkItem, { key: item.key, item, t });
+        return React2.createElement(ThinkItem, { key: item.key, item, t });
       }
       if (item.kind === "notice") {
-        return React3.createElement(DelegatedNoticeItem, { key: item.key, item, conversationT: conversationT2 });
+        return React2.createElement(DelegatedNoticeItem, { key: item.key, item, conversationT: conversationT2 });
       }
       const root = item.node.data?.root;
       if (root === void 0 || renderSlot === void 0 || openFile === void 0 || inspectCall === void 0) return null;
-      return React3.createElement(ToolCallBranch, {
+      return React2.createElement(ToolCallBranch, {
         key: item.key,
         renderSlot,
         block: root,
@@ -808,69 +712,34 @@ var GroupItems = React3.memo(function GroupItems2(props) {
   );
 });
 function FoldedSeat() {
-  return React3.createElement("div", { "data-tool-group-hidden": "" });
+  return React2.createElement("div", { "data-tool-group-hidden": "" });
 }
-var ToolCallGroupView = React3.memo(function ToolCallGroupView2(props) {
+var ToolCallGroupView = React2.memo(function ToolCallGroupView2(props) {
   const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t, sessionId } = props;
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props);
-  const productFoldActive = props.turnProcess !== void 0;
-  const group = React3.useMemo(() => groupOf(chat, node.key), [chat, node]);
-  const turnInfo = React3.useMemo(
-    () => productFoldActive ? null : turnProcessOf(chat, node.key),
-    [chat, node, productFoldActive]
-  );
-  const live = React3.useMemo(() => latestWorkNode(chat), [chat]);
+  const group = React2.useMemo(() => groupOf(chat, node.key), [chat, node]);
+  const live = React2.useMemo(() => latestWorkNode(chat), [chat]);
   const conversationT2 = getConversationT();
-  const [expanded, setExpanded] = React3.useState(false);
-  const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
-  const toggle = React3.useCallback(() => setExpanded((value) => !value), []);
-  const onKeyDown = React3.useCallback((event) => {
+  const [expanded, setExpanded] = React2.useState(false);
+  const toggle = React2.useCallback(() => setExpanded((value) => !value), []);
+  const onKeyDown = React2.useCallback((event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       setExpanded((value) => !value);
     }
   }, []);
-  const turnKey = turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`;
-  const turnToggle = React3.useCallback(() => {
-    if (turnKey === void 0) return;
-    setTurnExpanded(turnKey, !turnExpanded);
-  }, [turnKey, turnExpanded]);
-  const turnKeyDown = React3.useCallback(
-    (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        turnToggle();
-      }
-    },
-    [turnToggle]
-  );
   let output;
   if (group === null || !isGroupLeader(group, node.key)) {
-    output = React3.createElement(FoldedSeat, null);
+    output = React2.createElement(FoldedSeat, null);
   } else {
-    const small = React3.createElement(
+    output = React2.createElement(
       "div",
       { className: "dshToolGroup", "data-tool-group": "", "data-state": live !== void 0 && !expanded && group.itemKeys.includes(live.key) && isLiveWorkNode(live) ? "running" : "settled" },
-      React3.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
-      expanded ? React3.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT: conversationT2 }) : null
+      React2.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
+      expanded ? React2.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT: conversationT2 }) : null
     );
-    if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-      const first = node.key === turnInfo.firstKey;
-      if (!turnExpanded) {
-        output = first ? React3.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React3.createElement(FoldedSeat, null);
-      } else {
-        output = React3.createElement(
-          React3.Fragment,
-          null,
-          first ? React3.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-          turnExpanded ? small : null
-        );
-      }
-    } else {
-      output = small;
-    }
   }
-  return React3.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+  return React2.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
 });
 
 // src/client/translate.ts
@@ -895,86 +764,47 @@ function renderOfficial(props) {
   const filtered = Array.isArray(blocks) ? blocks.filter((b) => b.kind !== "reasoning") : blocks;
   const forwardedBase = { ...props, t: compositeT(getChatT(), typeof props.t === "function" ? props.t : void 0) };
   const forwarded = filtered === blocks ? forwardedBase : { ...forwardedBase, node: { ...node, data: { ...data, blocks: filtered } } };
-  return React4.createElement(official.component, forwarded);
+  return React3.createElement(official.component, forwarded);
 }
 function FoldedSeat2() {
-  return React4.createElement("div", { "data-tool-group-hidden": "" });
+  return React3.createElement("div", { "data-tool-group-hidden": "" });
 }
-var AssistantNodeWrapper = React4.memo(function AssistantNodeWrapper2(props) {
+var AssistantNodeWrapper = React3.memo(function AssistantNodeWrapper2(props) {
   const { node, useSession, sessionId } = props;
   const seatT = typeof props.t === "function" ? props.t : void 0;
   setConversationT(compositeT(getChatT(), seatT));
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props);
-  const productFoldActive = props.turnProcess !== void 0;
-  const group = React4.useMemo(() => isTransparentAssistant(node) ? groupOf(chat, node.key) : null, [chat, node]);
-  const turnInfo = React4.useMemo(
-    () => productFoldActive ? null : turnProcessOf(chat, node.key),
-    [chat, node, productFoldActive]
-  );
-  const live = React4.useMemo(() => latestWorkNode(chat), [chat]);
-  const [expanded, setExpanded] = React4.useState(false);
-  const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
-  const toggle = React4.useCallback(() => setExpanded((value) => !value), []);
-  const onKeyDown = React4.useCallback((event) => {
+  const group = React3.useMemo(() => isTransparentAssistant(node) ? groupOf(chat, node.key) : null, [chat, node]);
+  const live = React3.useMemo(() => latestWorkNode(chat), [chat]);
+  const [expanded, setExpanded] = React3.useState(false);
+  const toggle = React3.useCallback(() => setExpanded((value) => !value), []);
+  const onKeyDown = React3.useCallback((event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       setExpanded((value) => !value);
     }
   }, []);
-  const turnKey = turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`;
-  const turnToggle = React4.useCallback(() => {
-    if (turnKey === void 0) return;
-    setTurnExpanded(turnKey, !turnExpanded);
-  }, [turnKey, turnExpanded]);
-  const turnKeyDown = React4.useCallback(
-    (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        turnToggle();
-      }
-    },
-    [turnToggle]
-  );
   const t = getGroupT() ?? ((key, params) => params && "count" in params ? String(params.count) : key);
   const groupConversationT = compositeT(getChatT(), seatT);
-  const thinkContent = group !== null && isGroupLeader(group, node.key) ? React4.createElement(
-    React4.Fragment,
+  const thinkContent = group !== null && isGroupLeader(group, node.key) ? React3.createElement(
+    React3.Fragment,
     null,
-    React4.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live }),
-    expanded ? React4.createElement(GroupItems, { group, t, conversationT: groupConversationT }) : null
+    React3.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, live }),
+    expanded ? React3.createElement(GroupItems, { group, t, conversationT: groupConversationT }) : null
   ) : null;
   let output;
-  if (turnInfo !== null && isTurnSummary(turnInfo, node.key)) {
-    output = renderOfficial(props);
-  } else if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-    const first = node.key === turnInfo.firstKey;
-    if (!turnExpanded) {
-      output = first ? React4.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React4.createElement(FoldedSeat2, null);
-    } else {
-      const content = group === null ? renderOfficial(props) : thinkContent;
-      if (content === null) {
-        output = first ? React4.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React4.createElement(FoldedSeat2, null);
-      } else {
-        output = React4.createElement(
-          React4.Fragment,
-          null,
-          first ? React4.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-          content
-        );
-      }
-    }
-  } else if (group === null) {
+  if (group === null) {
     output = renderOfficial(props);
   } else if (thinkContent === null) {
-    output = React4.createElement(FoldedSeat2, null);
+    output = React3.createElement(FoldedSeat2, null);
   } else {
     output = thinkContent;
   }
-  return React4.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+  return React3.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
 });
 
 // src/client/UserNodeWrapper.tsx
-var React5 = __toESM(__dynRequire("react"), 1);
+var React4 = __toESM(__dynRequire("react"), 1);
 var import_dsh_client_ui_primitives2 = __dynRequire("@deepseek-ai/dsh-client-ui-primitives");
 var import_dsh_client_ui_attachment = __dynRequire("@deepseek-ai/dsh-client-ui-attachment");
 function contentParts(content) {
@@ -1034,9 +864,9 @@ function formatClock(time, t) {
   return `${d.getFullYear() === now.getFullYear() ? t("clock.md", params) : t("clock.ymd", params)} ${clock}`;
 }
 function CopyAction({ text, t }) {
-  const [copied, setCopied] = React5.useState(false);
-  const timer = React5.useRef(null);
-  React5.useEffect(
+  const [copied, setCopied] = React4.useState(false);
+  const timer = React4.useRef(null);
+  React4.useEffect(
     () => () => {
       if (timer.current !== null) clearTimeout(timer.current);
     },
@@ -1050,39 +880,39 @@ function CopyAction({ text, t }) {
       timer.current = setTimeout(() => setCopied(false), 1e3);
     });
   };
-  return React5.createElement(
+  return React4.createElement(
     import_dsh_client_ui_primitives2.Tooltip,
     { label: copied ? t("copied") : t("copy"), side: "bottom" },
-    React5.createElement(
+    React4.createElement(
       "button",
       { type: "button", className: "dshUserAction", "aria-label": copied ? t("copied") : t("copy"), onClick: onCopy },
-      copied ? React5.createElement(import_dsh_client_ui_primitives2.IconCheckOutline16, null) : React5.createElement(import_dsh_client_ui_primitives2.IconCopyOutline16, null)
+      copied ? React4.createElement(import_dsh_client_ui_primitives2.IconCheckOutline16, null) : React4.createElement(import_dsh_client_ui_primitives2.IconCopyOutline16, null)
     )
   );
 }
 function FileCard({ file }) {
   const meta = [extensionOf(file.name), fileSize(file.bytes)].filter(Boolean).join(" ");
-  return React5.createElement(
+  return React4.createElement(
     "span",
     { className: "dshUserFileCard", title: file.name },
-    typeof import_dsh_client_ui_primitives2.DocumentFileIcon === "function" ? React5.createElement(import_dsh_client_ui_primitives2.DocumentFileIcon, { className: "dshUserFileIcon" }) : null,
-    React5.createElement(
+    typeof import_dsh_client_ui_primitives2.DocumentFileIcon === "function" ? React4.createElement(import_dsh_client_ui_primitives2.DocumentFileIcon, { className: "dshUserFileIcon" }) : null,
+    React4.createElement(
       "span",
       { className: "dshUserFileContent" },
-      React5.createElement("span", { className: "dshUserFileName" }, file.name),
-      meta !== "" ? React5.createElement("span", { className: "dshUserFileMeta" }, meta) : null
+      React4.createElement("span", { className: "dshUserFileName" }, file.name),
+      meta !== "" ? React4.createElement("span", { className: "dshUserFileMeta" }, meta) : null
     )
   );
 }
-var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
+var UserNodeWrapper = React4.memo(function UserNodeWrapper2(props) {
   const { node, loadImage, renderMessageImages, t, sessionId } = props;
   const seatT = typeof t === "function" ? t : void 0;
   const translate = compositeT(getChatT(), seatT);
   setConversationT(translate);
-  const [expanded, setExpanded] = React5.useState(false);
-  const clampRef = React5.useRef(null);
-  const [overflowing, setOverflowing] = React5.useState(false);
-  React5.useEffect(() => {
+  const [expanded, setExpanded] = React4.useState(false);
+  const clampRef = React4.useRef(null);
+  const [overflowing, setOverflowing] = React4.useState(false);
+  React4.useEffect(() => {
     const el = clampRef.current;
     if (el === null) return;
     const update = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
@@ -1092,7 +922,7 @@ var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
     observer.observe(el);
     return () => observer.disconnect();
   }, [expanded]);
-  const toggle = React5.useCallback(() => setExpanded((value) => !value), []);
+  const toggle = React4.useCallback(() => setExpanded((value) => !value), []);
   const { hasMore, loadingOlder } = useSnapshotFace(props);
   const data = node.data ?? {};
   const rawContent = data.content;
@@ -1111,41 +941,41 @@ var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
         return renderMessageImages({ images, align: "end" });
       }
       const compact = attachments.length > 1;
-      return React5.createElement(
+      return React4.createElement(
         "div",
         { className: "dshUserAttachmentRow", "data-message-attachments": "" },
         attachments.map(
-          (attachment, index) => attachment.type === "image" ? React5.createElement(React5.Fragment, { key: `image:${index}` }, renderMessageImages({ images: [attachment.image], align: "end", compact })) : React5.createElement(FileCard, { key: `file:${index}`, file: attachment.file })
+          (attachment, index) => attachment.type === "image" ? React4.createElement(React4.Fragment, { key: `image:${index}` }, renderMessageImages({ images: [attachment.image], align: "end", compact })) : React4.createElement(FileCard, { key: `file:${index}`, file: attachment.file })
         )
       );
     }
-    return React5.createElement(import_dsh_client_ui_attachment.ImageGallery, {
+    return React4.createElement(import_dsh_client_ui_attachment.ImageGallery, {
       images,
       load: loadImage ?? (() => Promise.reject(new Error("image loader unavailable"))),
       align: "end",
       labels
     });
   };
-  const output = React5.createElement(
+  const output = React4.createElement(
     "div",
     { className: "dshUserRow", "data-time-hover-root": "" },
-    React5.createElement(
+    React4.createElement(
       "div",
       { className: "dshUserStack" },
       renderAttachments(),
-      showBubble ? React5.createElement(
+      showBubble ? React4.createElement(
         "div",
         { className: "dshUserBubble" },
         // The clamp lives on a PADDING-FREE inner box: browsers that cut
         // the clamp height short of the bottom padding (legacy line-clamp
         // behavior) can still never show a partial 4th line or eat the
         // bubble's bottom gap — max-height:72px is exactly 3 × 24px.
-        React5.createElement(
+        React4.createElement(
           "div",
           { ref: clampRef, className: "dshUserBubbleClamp", "data-clamped": expanded ? void 0 : "" },
           text !== "" ? (0, import_dsh_client_ui_primitives2.projectUserText)(text, data.referenceLabels ?? [], data.skillNames ?? [], "skill") : null,
           ...extraRest.map(
-            (block, index) => React5.createElement(import_dsh_client_ui_primitives2.JsonBlock, {
+            (block, index) => React4.createElement(import_dsh_client_ui_primitives2.JsonBlock, {
               key: `extra${index}`,
               label: translate("message.extraBlock"),
               payload: block,
@@ -1154,7 +984,7 @@ var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
           )
         )
       ) : null,
-      showBubble ? React5.createElement(
+      showBubble ? React4.createElement(
         "button",
         {
           type: "button",
@@ -1165,22 +995,22 @@ var UserNodeWrapper = React5.memo(function UserNodeWrapper2(props) {
           // manual onKeyDown (that would double-toggle).
           onClick: toggle
         },
-        React5.createElement(expanded ? import_dsh_client_ui_primitives2.IconChevronUpOutline14 : import_dsh_client_ui_primitives2.IconChevronDownOutline14, { size: 14 }),
+        React4.createElement(expanded ? import_dsh_client_ui_primitives2.IconChevronUpOutline14 : import_dsh_client_ui_primitives2.IconChevronDownOutline14, { size: 14 }),
         toolT(expanded ? "collapse" : "expand")
       ) : null
     ),
-    React5.createElement(
+    React4.createElement(
       "div",
       { className: "dshUserActions" },
-      data.time !== void 0 ? React5.createElement("span", { key: "time", className: "dshUserTime" }, formatClock(data.time, translate)) : null,
-      React5.createElement(CopyAction, { key: "copy", text, t: translate })
+      data.time !== void 0 ? React4.createElement("span", { key: "time", className: "dshUserTime" }, formatClock(data.time, translate)) : null,
+      React4.createElement(CopyAction, { key: "copy", text, t: translate })
     )
   );
-  return React5.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
+  return React4.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
 });
 
 // src/client/NoticeNodeWrapper.tsx
-var React6 = __toESM(__dynRequire("react"), 1);
+var React5 = __toESM(__dynRequire("react"), 1);
 var NOTICE_KINDS = /* @__PURE__ */ new Set([
   "compaction",
   "context",
@@ -1194,112 +1024,56 @@ var NOTICE_KINDS = /* @__PURE__ */ new Set([
 ]);
 var UNFOLDED_NOTICE_KINDS = /* @__PURE__ */ new Set(["turn-error", "turn-max-tokens", "model-retry"]);
 function FoldedSeat3() {
-  return React6.createElement("div", { "data-tool-group-hidden": "" });
+  return React5.createElement("div", { "data-tool-group-hidden": "" });
 }
-var NoticeNodeWrapper = React6.memo(function NoticeNodeWrapper2(props) {
+var NoticeNodeWrapper = React5.memo(function NoticeNodeWrapper2(props) {
   const { node, useSession, sessionId } = props;
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props);
-  const productFoldActive = props.turnProcess !== void 0;
-  const turnInfo = React6.useMemo(
-    () => productFoldActive ? null : turnProcessOf(chat, node.key),
-    [chat, node, productFoldActive]
-  );
-  const inlineGroup = React6.useMemo(
+  const inlineGroup = React5.useMemo(
     () => isInlineNoticeNode(node) ? groupOf(chat, node.key) : null,
     [chat, node]
   );
-  const live = React6.useMemo(() => latestWorkNode(chat), [chat]);
-  const [expanded, setExpanded] = React6.useState(false);
-  const turnExpanded = useTurnExpanded(turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`);
-  const toggle = React6.useCallback(() => setExpanded((value) => !value), []);
-  const onKeyDown = React6.useCallback((event) => {
+  const live = React5.useMemo(() => latestWorkNode(chat), [chat]);
+  const [expanded, setExpanded] = React5.useState(false);
+  const toggle = React5.useCallback(() => setExpanded((value) => !value), []);
+  const onKeyDown = React5.useCallback((event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       setExpanded((value) => !value);
     }
   }, []);
-  const turnKey = turnInfo === null ? void 0 : `${sessionId ?? ""}:${turnInfo.turn}`;
-  const turnToggle = React6.useCallback(() => {
-    if (turnKey === void 0) return;
-    setTurnExpanded(turnKey, !turnExpanded);
-  }, [turnKey, turnExpanded]);
-  const turnKeyDown = React6.useCallback(
-    (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        turnToggle();
-      }
-    },
-    [turnToggle]
-  );
   const t = getGroupT() ?? ((key, params) => params && "count" in params ? String(params.count) : key);
   const seatT = typeof props.t === "function" ? props.t : void 0;
   setConversationT(compositeT(getChatT(), seatT));
   let output;
   if (!NOTICE_KINDS.has(node.kind)) {
-    output = React6.createElement(FoldedSeat3, null);
+    output = React5.createElement(FoldedSeat3, null);
   } else if (UNFOLDED_NOTICE_KINDS.has(node.kind)) {
     const official = officialNodeEntry(node.kind);
     const conversationT2 = compositeT(getChatT(), seatT);
-    output = official !== void 0 && official.component != null && conversationT2 !== void 0 ? React6.createElement(official.component, { node, t: conversationT2 }) : React6.createElement(FoldedSeat3, null);
+    output = official !== void 0 && official.component != null && conversationT2 !== void 0 ? React5.createElement(official.component, { node, t: conversationT2 }) : React5.createElement(FoldedSeat3, null);
+  } else if (inlineGroup === null || !isGroupLeader(inlineGroup, node.key)) {
+    output = React5.createElement(FoldedSeat3, null);
   } else {
-    if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-      const first = node.key === turnInfo.firstKey;
-      if (!turnExpanded) {
-        output = first ? React6.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React6.createElement(FoldedSeat3, null);
-      } else {
-        const leaderSeat = inlineGroup !== null && isGroupLeader(inlineGroup, node.key);
-        const groupSmall = leaderSeat ? buildGroupSmall() : first ? null : React6.createElement(FoldedSeat3, null);
-        const small = first && groupSmall !== null && groupSmall.props !== void 0 && groupSmall.props["data-tool-group-hidden"] !== void 0 ? null : groupSmall;
-        output = React6.createElement(
-          React6.Fragment,
-          null,
-          first ? React6.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-          small
-        );
-      }
-    } else if (inlineGroup === null || !isGroupLeader(inlineGroup, node.key)) {
-      output = React6.createElement(FoldedSeat3, null);
-    } else {
-      output = buildGroupSmall();
-    }
-  }
-  return React6.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
-  function buildGroupSmall() {
     const g = inlineGroup;
     const official = officialNodeEntry(node.kind);
     if (g.count === 1 && (official === void 0 || official.component == null)) {
-      return React6.createElement(FoldedSeat3, null);
+      output = React5.createElement(FoldedSeat3, null);
+    } else {
+      const conversationT2 = compositeT(getChatT(), seatT);
+      output = React5.createElement(
+        "div",
+        { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
+        React5.createElement(GroupBar, { group: g, expanded, onToggle: toggle, onKeyDown, t, live }),
+        expanded ? React5.createElement(GroupItems, { group: g, t, conversationT: conversationT2 }) : null
+      );
     }
-    const conversationT2 = compositeT(getChatT(), seatT);
-    return React6.createElement(
-      "div",
-      { className: "dshToolGroup", "data-tool-group": "", "data-notice": "" },
-      React6.createElement(GroupBar, { group: g, expanded, onToggle: toggle, onKeyDown, t, live }),
-      expanded ? React6.createElement(GroupItems, { group: g, t, conversationT: conversationT2 }) : null
-    );
   }
+  return React5.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output);
 });
 
 // src/client/styles.ts
 var CSS = `
-.dshTurnFoldRow{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  min-width:0;height:24px;box-sizing:border-box;padding:0 8px;border-radius:6px;
-  cursor:pointer;user-select:none;outline:none;
-  font-size:14px;line-height:24px;
-  border:1px dashed var(--dsw-alias-border-l2);
-}
-.dshTurnFoldRow:hover,
-.dshTurnFoldRow:focus-visible{
-  background:var(--dsw-alias-interactive-bg-hover);
-  border-color:var(--dsw-alias-border-l3);
-}
-.dshTurnFoldLabel{
-  min-width:0;color:var(--dsw-alias-label-secondary);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  font-size:14px;line-height:24px;
-}
 [data-chat-flow-key]:has([data-tool-group-hidden]){display:none}
 .dshToolGroupRow{
   display:flex;align-items:center;gap:12px;min-width:0;height:24px;
@@ -1590,8 +1364,8 @@ function installSlotCoreOverlay(SlotCore2) {
 
 // src/client/index.ts
 var DICTS = {
-  zh: { running: "\u6B63\u5728\u8FD0\u884C", group: "\u5DE5\u5177\u8C03\u7528\u7EC4", folded: "{count} \u4E2A\u5757\u5DF2\u88AB\u6298\u53E0", turnFolded: "\u8BE5\u8F6E\u6B21\u5DE5\u4F5C\u8FC7\u7A0B\u5DF2\u6298\u53E0", expand: "\u5C55\u5F00", collapse: "\u6536\u8D77" },
-  en: { running: "Running", group: "tool call group", folded: "{count} blocks folded", turnFolded: "Turn work process folded", expand: "Expand", collapse: "Collapse" }
+  zh: { running: "\u6B63\u5728\u8FD0\u884C", group: "\u5DE5\u5177\u8C03\u7528\u7EC4", folded: "{count} \u4E2A\u5757\u5DF2\u88AB\u6298\u53E0", expand: "\u5C55\u5F00", collapse: "\u6536\u8D77" },
+  en: { running: "Running", group: "tool call group", folded: "{count} blocks folded", expand: "Expand", collapse: "Collapse" }
 };
 var name = "fold";
 var inject = ["slots", "locale", "sessions"];

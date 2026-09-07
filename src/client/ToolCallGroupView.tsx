@@ -39,7 +39,6 @@ import { AutoLoadHost } from './AutoLoadHost'
 import { getConversationT, officialNodeEntry } from './registry'
 import { useSnapshotFace } from './snapshot-face'
 import type { SelectorHook } from './snapshot-face'
-import { isProcessNode, isTurnSummary, setTurnExpanded, turnProcessOf, useTurnExpanded } from './turn-fold'
 
 /** renderSlot face for the `tool.call.toolview` child slot. */
 type RenderSlot = (
@@ -75,10 +74,8 @@ export interface ToolCallGroupViewProps {
   inspectCall: (callId: string) => void
   /** Namespace-bound translate (`locale: 'fold'`). */
   t: (key: string, params?: Record<string, unknown>) => string
-  /** Session id (big-fold state is keyed per session). */
+  /** Session id (auto-load host keying). */
   sessionId?: string
-  /** Alpha owner kit: the product's own turn-process controller. */
-  turnProcess?: { foldable?: boolean }
 }
 
 /** Minimal fallback for tool names without a registered `tool.call.toolview` entry. */
@@ -256,34 +253,6 @@ function ThinkItem({ item, t }: { item: GroupItem & { kind: 'think' }; t: ToolCa
     ),
   )
 }
-
-export interface TurnFoldBarProps {
-  expanded: boolean
-  onToggle: () => void
-  onKeyDown: (event: React.KeyboardEvent) => void
-  t: (key: string, params?: Record<string, unknown>) => string
-}
-
-/** The turn-level ("big") fold bar: "该轮次工作过程已折叠" + chevron. */
-export const TurnFoldBar = React.memo(function TurnFoldBar({ expanded, onToggle, onKeyDown, t }: TurnFoldBarProps): React.ReactElement {
-  const chevron = React.createElement(expanded ? IconChevronDownOutline14 : IconChevronRightOutline14, {
-    className: 'dshToolGroupChevron',
-  })
-  return React.createElement(
-    'div',
-    {
-      className: 'dshTurnFoldRow',
-      role: 'button',
-      tabIndex: 0,
-      'aria-expanded': expanded,
-      'aria-label': t('turnFolded'),
-      onClick: onToggle,
-      onKeyDown,
-    },
-    React.createElement('span', { className: 'dshTurnFoldLabel' }, t('turnFolded')),
-    chevron,
-  )
-})
 
 export interface GroupBarProps {
   group: ToolGroup
@@ -466,19 +435,10 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
-  // Alpha channel's own compact-transcript turn folding is active for this
-  // turn: yield the big fold entirely to the product (no double bars); the
-  // small tool/think groups stay ours.
-  const productFoldActive = props.turnProcess !== undefined
   const group = React.useMemo(() => groupOf(chat, node.key), [chat, node])
-  const turnInfo = React.useMemo(
-    () => (productFoldActive ? null : turnProcessOf(chat, node.key)),
-    [chat, node, productFoldActive],
-  )
   const live = React.useMemo(() => latestWorkNode(chat), [chat])
   const conversationT = getConversationT()
   const [expanded, setExpanded] = React.useState(false)
-  const turnExpanded = useTurnExpanded(turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`)
   const toggle = React.useCallback(() => setExpanded((value) => !value), [])
   const onKeyDown = React.useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -486,49 +446,21 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
       setExpanded((value) => !value)
     }
   }, [])
-  const turnKey = turnInfo === null ? undefined : `${sessionId ?? ''}:${turnInfo.turn}`
-  const turnToggle = React.useCallback(() => {
-    if (turnKey === undefined) return
-    setTurnExpanded(turnKey, !turnExpanded)
-  }, [turnKey, turnExpanded])
-  const turnKeyDown = React.useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        turnToggle()
-      }
-    },
-    [turnToggle],
-  )
 
+  // Turn-level ("big") folding is owned by the product on every supported
+  // channel: dsh-fold only renders the small per-run groups below.
   let output: React.ReactNode
   if (group === null || !isGroupLeader(group, node.key)) {
     // Non-leader / non-group seat: folded to nothing (mark so the flowItem
     // is hidden instead of leaving a gap).
     output = React.createElement(FoldedSeat, null)
   } else {
-    const small = React.createElement(
+    output = React.createElement(
       'div',
       { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': live !== undefined && !expanded && group.itemKeys.includes(live.key) && isLiveWorkNode(live) ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
       React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
       expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT }) : null,
     )
-
-    if (turnInfo !== null && isProcessNode(turnInfo, node.key)) {
-      const first = node.key === turnInfo.firstKey
-      if (!turnExpanded) {
-        output = first ? React.createElement(TurnFoldBar, { expanded: false, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : React.createElement(FoldedSeat, null)
-      } else {
-        output = React.createElement(
-          React.Fragment,
-          null,
-          first ? React.createElement(TurnFoldBar, { expanded: true, onToggle: turnToggle, onKeyDown: turnKeyDown, t }) : null,
-          turnExpanded ? small : null,
-        )
-      }
-    } else {
-      output = small
-    }
   }
   return React.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output)
 })

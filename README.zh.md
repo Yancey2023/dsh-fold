@@ -7,37 +7,44 @@
 实现**纯 Slot / React**：不碰 DOM、不用 MutationObserver、不用 display:none、不用 querySelector；展开后的每张工具卡片都复用官方 renderer（用户气泡则用官方 primitives 重建）。
 
 ![折叠块（工具合并/实时内容）](docs/fold-block.png)
-![轮次级大折叠](docs/fold-turn.png)
 ![用户输入3行折叠](docs/fold-user-input.png)
 
 ## 行为
 
-- **分组规则**：`snapshot.chat.order` 中连续且同 turn 的 `tool-call` 节点归为一组。只含 reasoning（Think 行）的 assistant-step 节点是**透明的**：不切断链条，但随组折叠（折叠时隐藏，展开时按原顺序插回调用之间）。模型重试提示（"已重试模型请求"）与上下文注入行（"上下文注入"）同样透明——不会把链条切成独立小条，而是并入相邻工作组（相邻折叠块合并成一条）、计入组块数，展开时在对应位置显示。没有相邻工具的 Think 行会折成**自己的条**（纯 Think 组）；正文节点里的 reasoning 部分同样被折叠——**只有 text 保持可见**。只有真正的 assistant **正文**（以及 user/steering、command、compaction…）才切断链条——已用真实 288 调用会话验证：旧规则下每个 step 的 Think 行把链切成 150 组；透明化后同一流只按正文切成 85 组。（DSH 数据模型里每个产生工具调用的 step 都会流式输出 reasoning block，若把 reasoning 当边界，每个调用都会被隔离成独立一组。）
+- **分组规则**：`snapshot.chat.order` 中连续且同 turn 的 `tool-call` 节点归为一组。只含 reasoning（Think 行）的 assistant-step 节点是**透明的**：不切断链条，但随组折叠（折叠时隐藏，展开时按原顺序插回调用之间）。内联提示行——上下文注入（`context`）、自动上下文压缩（`compaction`）、手动压缩、命令与 workflow 运行——同样透明：不会把链条切成独立小条，而是并入相邻工作组（相邻折叠块合并成一条）、计入组块数，展开时在对应位置显示。**必须始终可见的诊断**——`model-retry`（已重试模型请求）、`turn-error`（本轮运行失败）、`turn-max-tokens`（达到输出上限）——**不折叠也不合并**：无条件渲染官方 cell 视图，并作为链条边界。没有相邻工具的 Think 行会折成**自己的条**（纯 Think 组）；正文节点里的 reasoning 部分同样被折叠——**只有 text 保持可见**。只有真正的 assistant **正文**（以及 user/steering、command、compaction…）才切断链条——已用真实 288 调用会话验证：旧规则下每个 step 的 Think 行把链切成 150 组；透明化后同一流只按正文切成 85 组。（DSH 数据模型里每个产生工具调用的 step 都会流式输出 reasoning block，若把 reasoning 当边界，每个调用都会被隔离成独立一组。）
 - **运行中**：折叠行只显示当前正在执行的工具（`正在运行 <工具名>`），右侧为累计数量（已完成+运行中）+ 箭头。当前调用结束后自动切换到下一个运行中的调用；全部结束（含 error/cancelled/interrupted——任何 `tool-result` 形态）后左侧留空。
 - **展开后**：顶部保留组条（箭头朝下），下方按真实执行顺序渲染**官方 `tool.call.toolview` 分发**的成员卡片——与产品 `ToolCallTree` 完全同一条分发路径，bash/read/grep/web 等卡片、status/参数/输出/错误/subcall/嵌套调用全部保持原生。展开过程中新调用实时追加，不会自动折叠（展开状态保存在组长 seat 的 React state，key 为首个调用的稳定节点 key）。
-- **轮次级大折叠**：一轮对话（一条用户消息 + 智能体整轮工作过程）在**结束并给出总结**后，除总结外的所有内容——工具调用、Think 行、中间正文——全部折进一个写着 `该轮次工作过程已折叠` 的大条。小折叠在大折叠**内部**：展开大折叠后小折叠在各自位置重现；总结正文始终可见。未结束的轮次或没有总结的轮次保持现状（仅小折叠）。
+- **轮次级折叠由产品负责**：当前支持的 DSH 通道中，关闭轮次的紧凑转录折叠由产品自身的 turn-process 控制器完成，dsh-fold **已不再包含任何轮次级折叠代码**——不渲染轮次级大条，也不会出现双重折叠条。插件只在每个轮次状态下（打开中/已关闭/已总结）负责上文所述的小组折叠。
 - **折叠条文案**：折叠条显示 `N 个块已被折叠`——N 为折叠块数（工具调用 + 随组折叠的 Think 行；block 内部的 subcall 不重复计数）。运行中左侧显示 `正在运行 <工具>`。
 - **折叠条显示"当前对话最新状态"**：折叠条左侧显示当前对话**此时此刻正在做什么**——全局最新的活动块（不是组内标签）：流式 Think 行显示 `[Think] · <最新行>`；工作中的工具调用显示其真实行（terminal 调用为 `[icon] Bash · <命令描述>`，以及 `Read · <路径>`、`Search · <查询>`、`ask_user_question · <问题>`……即产品 `toolRowModel` 的逐字复刻）。调用执行中，正在跑的调用即"最新"；调用结束、模型再次思考时，Think 行接替显示；对话空闲时左侧留空。活动块**仅在折叠时**显示——展开后细节就在下方，折叠条左侧置空；真正承载该活动节点的折叠条额外带产品同款扫光动画。
-- **非文本块全部折叠**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）、用户命令如 `/permission`（`command`）、模型重试提示（`model-retry` ——"已重试模型请求"与 `context` ——"上下文注入"，都**并入相邻工作组成同一个折叠组**：不单独成条、不切断链条，相邻折叠块合并成一条，展开时在对应位置重现该行并计入组块数）、轮次错误（`turn-error`）、max-tokens 提示（`turn-max-tokens`）、未知面（`unknown`）与 workflow 运行（`workflow-run`）都与其他工作块一样折叠——未结束轮次中各折成自己的 `1 个块已被折叠` 条（可展开，诊断仍可一键到达）；轮次以总结结束后并入轮次级大折叠。只有纯文本（用户/steering 消息、assistant 正文、总结及其复制/操作行）保持可见。
+- **非文本块全部折叠（诊断除外）**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）、用户命令如 `/permission`（`command`）、未知面（`unknown`）与 workflow 运行（`workflow-run`）都与其他工作块一样折叠——并入相邻工具/Think 组，或各自折成自己的 `1 个块已被折叠` 条（可展开）。只有三类**诊断**——`model-retry`（已重试模型请求）、`turn-error`（本轮运行失败）、`turn-max-tokens`（达到输出上限）——**永不折叠**：无条件渲染官方 cell 视图，始终可见。纯文本（用户/steering 消息、assistant 正文、总结及其复制/操作行）同样保持可见。
 - **用户输入**：文本超过 3 行的用户消息被钳制到 3 行，气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。钳制发生在**无 padding 的内层盒**上（`max-height: 72px` = 恰好 3 × 24px 行高）：任何浏览器都精确渲染 3 行并保留气泡底部空隙——旧式 line-clamp 行为（会露出半行第 4 行并吃掉底部 padding）被 max-height 硬切掉（headless Chromium 实证）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（官方 `projectUserText`——`/name`/`@name`/session ref chip 与宿主气泡同款的按版本门控；`JsonBlock` 附加块；官方附件行——rc 为整批 `ImageGallery` 调用，alpha 0.1.3 为逐图 compact 调用加通用文件卡片；产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）。短消息原样渲染（clamp 无效果、按钮隐藏）。
 - **滑到顶部自动加载更早（连续）**：滚动到对话最顶部且存在更早历史时自动拉取下一页（`loadOlder`），无需点击按钮；产品的"加载更早"按钮保留作手动兜底。只要用户**继续停在顶部**且 `hasMore` 仍为真，就会一页接一页自动加载，直到历史耗尽或用户滚离顶部（每次加载完成后用刷新后的快照重新武装）。滚动容器通过产品自身的 `scrollerOf` 契约（`[data-conversation-scroll]`）解析，动作走会话作用域的官方 `conversation.loadOlder()`；阈值、`hasMore`、`loadingOlder`、in-flight pump 等守卫防止重复或滚动中途误触发。这是插件唯一一处行为性 DOM 读取（被动 scroll 监听），不做任何修补或改样式。
 
 ## DSH 版本
 
-仅支持 DSH 当前的三个发布通道：**latest `0.1.2-rc.1`** 与 **new/next
-`0.1.2-rc.1`**（npm `latest` / `next` 标签，RC 通道）、**alpha
-`0.1.3-alpha.2`**（npm `alpha` 标签）。更早版本已不在支持范围——针对它们
-的兼容层已全部移除（`useSession` 携带聊天快照的适配、命名空间探测、
-`status`/`final` 兜底判断）。两个通道共用同一套 chat-node seat kit：
-`useChat` 返回聊天目标（`chat.legacy.turnEnds` 为轮次闭合信号）、
-`useSession` 只提供窗口标志位，且聊天 cell 字典都注册在 `chat`
-命名空间下。剩余差异——alpha 专属的 `loadImage` owner kit、0.1.3 的
+仅支持 DSH 当前发布通道：**alpha `0.1.3-alpha.2`**（npm `alpha` 标签，
+即当前 Harness 随附的版本）。更早版本已不在支持范围——针对它们的兼容层
+已全部移除（`useSession` 携带聊天快照的适配、命名空间探测、`status`/`final`
+兜底判断、以及插件自带的轮次级大折叠——该折叠由产品负责）。通道共用同一
+套 chat-node seat kit：`useChat` 返回聊天目标（`chat.legacy.turnEnds`
+为轮次闭合信号）、`useSession` 只提供窗口标志位，且聊天 cell 字典都注册
+在 `chat` 命名空间下。剩余通道细节——`loadImage` owner kit、0.1.3 的
 用户气泡更新（官方 `projectUserText` 签名变化、`file` 内容块与通用
 文件卡片）——封闭在
 `src/client/snapshot-face.ts`（快照归一化）、`src/client/registry.ts`
 （`compositeT` 命名空间兜底）与 `src/client/UserNodeWrapper.tsx`
 （用户文本 + 附件 kit）三个模块中；运行时 overlay 在 SlotCore 结构
 变化时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
+
+`dsh-fold` 是**纯浏览器端插件**：只读取 shell 交给每个 seat 的聊天快照
+（`useChat`/`useSession` selector hook），从不读取 session 事件日志。
+因此它**不声明任何对 DSH 核心的运行时依赖**（`@deepseek-ai/dsh-session`、
+`dsh-agent`、`dsh-llm-*`……）——安装时绝不会在宿主旁边拖入第二套版本
+错位的 DSH 运行时。唯一的运行时导入是 shell 自持的客户端包，以 peer
+dependency 声明、启动时解析到宿主的同一份实例
+（`dsh-client-ui-slots`、`dsh-client-ui-primitives`、
+`dsh-client-ui-attachment`、`dsh-attachment`、`react`）。
 
 ## 架构 / extension seam
 
@@ -113,7 +120,7 @@ dsh plugin --profile web remove dsh-fold
 
 ```bash
 pnpm install && pnpm build   # tsc --noEmit + esbuild（lib/）
-pnpm test                    # 13 套：分组 · tool-row · 自动加载 · 大折叠 · overlay（真实 ui-slots）· bundle 冒烟 · 组件 · assistant · user · notice · 完整 slot 管线
+pnpm test                    # 14 套：分组 · tool-row · 自动加载 · overlay（真实 ui-slots）· bundle 冒烟 · 组件 · assistant · user · notice · 完整 slot 管线 · session-api（真实 dsh-session）· runtime-hygiene
 ```
 
 ## 验收映射
@@ -137,7 +144,7 @@ pnpm test                    # 13 套：分组 · tool-row · 自动加载 · �
 | 15 组内 bash 运行中 | 条内显示真实块行：`Bash · <描述/命令>` |
 | 16 仅 Think 流式（尚无工具） | 条内显示 `Think · <最新行>` |
 | 17 全部完成 | 折叠条左侧空白 |
-| 18 压缩/注入/命令块 | 折叠为 `1 个块已被折叠`，轮次结束后并入大折叠 |
+| 18 压缩/注入/命令块 | 折叠为 `1 个块已被折叠` 或并入相邻组；`model-retry`/`turn-error`/`turn-max-tokens` 永不折叠 |
 | 19 旧式 line-clamp 浏览器 | 仍是恰好 3 行 + 底部空隙（无 padding 钳制盒） |
 | 20 滑到顶部且有更早历史 | 自动加载下一页（无需点击），每次滚顶只触发一次 |
 | 21 中途/无历史/加载中 | 不自动加载 |
@@ -147,7 +154,7 @@ pnpm test                    # 13 套：分组 · tool-row · 自动加载 · �
 - 展开态成员渲染复刻了产品内部未导出的 `ToolCall` 小外壳（call-row div + subcall 递归）；真正的卡片全部来自官方 `tool.call.toolview` 条目。没有注册 toolview 的工具使用一个紧凑的主题化兜底卡片（名称/参数/输出/错误），而非产品内部 `GenericToolCard`。
 - 用户气泡同样是复刻（基于官方 primitives）而非委托：Chromium 的 `-webkit-line-clamp` 无法穿透官方行内的嵌套 flex 布局（已用 headless Chromium 实证），钳制必须落在我们自己的元素上。复刻保留了产品气泡、ref chip、图片、时间与复制操作；若未来 DSH 修改用户气泡外观，复刻 CSS 需同步跟进。
 - 折叠条内的"真实块"是产品折叠行模型（`toolRowModel` + 运行中 Think 行）的复刻——标题/摘要与产品行一致，但由插件自行渲染；未来 DSH 若改动行模型的标题或摘要键，需同步 `tool-row.ts`。
-- 诊断块（model-retry、turn-error、turn-max-tokens、unknown、workflow-run）同样折叠——按"非文本全折叠"规则，各自折成可展开的 `1 个块已被折叠` 条，失败信息一键可达。
+- 诊断块（`model-retry`、`turn-error`、`turn-max-tokens`）**永不折叠**——无条件渲染官方 cell 视图，始终可见；其余提示（`compaction`、`context`、`command` 等）折成可展开的条，失败信息仍一键可达。
 - 组身份 = 首个成员的稳定节点 key。若加载更早历史导致新工具调用插到当前组长之前，组长会移交且该组展开状态重置。
 - SlotCore overlay 依赖本版本的两个结构不变量（register 把新条目推入父 record 的 entries；releaseEntry 拆除 `entry.children`）；若未来版本破坏它们，包装器 fail-closed（插件惰性，官方 UI 不受影响）。
 - 展开超长链条会重新挂载官方卡片；大量已结束调用默认保持折叠，滚动成本约等于一行。
@@ -156,11 +163,10 @@ pnpm test                    # 13 套：分组 · tool-row · 自动加载 · �
 
 ```
 src/client/group.ts              纯分组逻辑（有单测）
-src/client/turn-fold.ts          轮次级大折叠（有单测）
 src/client/tool-row.ts           运行中工具行模型（产品 toolRowModel 复刻）
 src/client/auto-load.ts          滑顶自动加载更早（sessions 作用域）
 src/client/AutoLoadHost.tsx      座位 ref 锚点，接入自动加载器
-src/client/snapshot-face.ts      rc + alpha 双版本快照适配层
+src/client/snapshot-face.ts      聊天目标快照适配层（seat kit 消费者）
 src/client/ToolCallGroupView.tsx 组行（真实块内容）+ 官方成员渲染
 src/client/AssistantNodeWrapper.tsx assistant-step 阴影（委托官方）
 src/client/UserNodeWrapper.tsx   用户气泡复刻 + 3 行钳制 + 展开/收起
@@ -175,7 +181,8 @@ src/host/index.ts                最小 host 锚点
 cordis.patch.yml                 bundle patch 层（host 行）
 build.mjs                        tsc + esbuild
 scripts/install-dsh.cjs          安装/卸载脚本
-test/                            分组 · tool-row · 快照适配 · 自动加载 · 大折叠 · overlay · bundle 冒烟 · 渲染套件
+scripts/verify-pack.mjs          发布门禁：pnpm pack + 产物扫描
+test/                            分组 · tool-row · 快照适配 · 自动加载 · overlay · bundle 冒烟 · 渲染套件 · session-api（真实 dsh-session）· runtime-hygiene
 docs/core-patch.md               唯一 core 改动（源码级 patch）
 ```
 

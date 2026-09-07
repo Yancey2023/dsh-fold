@@ -37,14 +37,17 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node test/group.test.mjs && node test/tool-row.test.mjs && node test/turn-fold.test.mjs && node test/overlay.test.mjs && node test/bundle-smoke.mjs && node test/component.test.mjs && node test/assistant.test.mjs && node test/user.test.mjs && node test/notice.test.mjs && node test/auto-load.test.mjs && node test/integration.test.mjs",
+    "test": "node test/group.test.mjs && node test/tool-row.test.mjs && node test/overlay.test.mjs && node test/bundle-smoke.mjs && node test/component.test.mjs && node test/assistant.test.mjs && node test/user.test.mjs && node test/notice.test.mjs && node test/auto-load.test.mjs && node test/integration.test.mjs && node test/session-api.test.mjs && node test/runtime-hygiene.test.mjs",
+    "verify:pack": "node scripts/verify-pack.mjs",
     "install:dsh": "node scripts/install-dsh.cjs",
     "uninstall:dsh": "node scripts/install-dsh.cjs uninstall"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-attachment": "0.1.3-alpha.2",
     "@deepseek-ai/dsh-client-ui-attachment": "0.1.3-alpha.2",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.3-alpha.2",
     "@deepseek-ai/dsh-client-ui-slots": "0.1.3-alpha.2",
+    "@deepseek-ai/dsh-session": "0.1.3-alpha.2",
     "@types/react": "~18.3.31",
     "esbuild": "^0.28.2",
     "react": "~18.3.1",

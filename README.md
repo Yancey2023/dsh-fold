@@ -13,7 +13,6 @@ are reused for every expanded tool card (and the user bubble is rebuilt from
 official primitives).
 
 ![Fold blocks (tool merge / live content)](docs/fold-block.png)
-![Turn-level big fold](docs/fold-turn.png)
 ![User input 3-line fold](docs/fold-user-input.png)
 
 ## Behaviour
@@ -22,15 +21,18 @@ official primitives).
   (`snapshot.chat.order`) and belong to the same turn form one group.
   Assistant-step nodes whose blocks contain ONLY reasoning (Think rows) are
   TRANSPARENT: they neither split chains, but fold WITH the group (hidden
-  while collapsed, re-shown between the calls when expanded). Model-retry
-  notices (model-retry) and context-injection rows (context) are
-  transparent the same way — they never split a chain into separate bars;
-  the row folds in with the adjacent work (neighboring fold blocks merge
-  into one bar) and counts toward the group's block count. Think rows
-  with NO adjacent tools fold into their OWN bar (think-only group). The
-  reasoning part of a text-bearing node is folded away too — **only text
-  stays visible**. Only real assistant TEXT (and user/steering messages,
-  commands, compaction, …) ends a run — verified against a real 288-call session: with the old rule
+  while collapsed, re-shown between the calls when expanded). The inline
+  notice rows — context injection (`context`), automatic compaction
+  (`compaction`), manual compaction, commands and workflow runs — fold in
+  with the adjacent work the same way (neighboring fold blocks merge into one
+  bar and count toward the group's block count). Diagnostics the user must
+  always see — `model-retry` (已重试模型请求), `turn-error` (本轮运行失败)
+  and `turn-max-tokens` (达到输出上限) — are NOT folded and NOT merged: they
+  render the official cell view unconditionally and act as run boundaries.
+  Think rows with NO adjacent tools fold into their OWN bar (think-only
+  group). The reasoning part of a text-bearing node is folded away too —
+  **only text stays visible**. Only real assistant TEXT (and user/steering
+  messages, commands, compaction, …) ends a run — verified against a real 288-call session: with the old rule
   every per-step Think row split the chain into 150 groups; with
   transparency the same stream folds into 85 groups split exclusively by
   text. (In the DSH data model every tool-producing step streams a reasoning
@@ -48,14 +50,12 @@ official primitives).
   all keep their native look. New calls arriving while expanded are appended
   live; the user's expanded state never resets (it lives in React state of
   the group leader seat, keyed by the stable first-call node key).
-- **Turn-level big fold**: when a turn (one user message + the agent's whole
-  working cycle) CLOSES with a final summary, everything except the summary —
-  tool calls, Think rows AND intermediate assistant text — folds behind ONE
-  bar reading `Turn work process folded`. The small
-  folds live INSIDE the big fold: expanding the big fold reveals them at
-  their original positions; the summary text always stays visible. A turn
-  that is still open, or that ended without a summary, keeps the current
-  (small-fold only) view.
+- **Turn-level folding is PRODUCT-owned**: the product's own turn-process
+  controller (compact-transcript summarization, on every supported channel)
+  handles closing-turn folding, and dsh-fold ships NO turn-level folding
+  code — no turn bar, no double bars. The plugin only owns the small
+  per-run groups described above, in every turn state (open, closed,
+  summarized).
 - **Bar label**: the folded bar reports `N blocks folded`
   — N is the number of folded blocks (tool calls + Think rows folded into
   the group; subcalls inside a block are not counted). While a call runs,
@@ -73,17 +73,17 @@ official primitives).
   COLLAPSED — expanded, the details are right below, so the bar's left goes
   empty. The bar whose own group hosts the active node additionally shows
   the product's row sweep.
-- **Everything non-text folds**: automatic context compression
-  (`compaction`), context injection (`context`), manual compaction
+- **Everything non-text folds except diagnostics**: automatic context
+  compression (`compaction`), context injection (`context`), manual compaction
   (`manual-compaction`), user commands such as `/permission` (`command`),
-  model-retry notices (`model-retry`), turn errors
-  (`turn-error`), max-token notices (`turn-max-tokens`), unknown surfaces
-  (`unknown`) and workflow runs (`workflow-run`) are folded like any other
-  work block — each behind its own `1 blocks folded` bar in an open turn
-  (expandable, so diagnostics stay reachable), and inside the turn-level
-  big fold once the turn closes with a summary. Only plain text (user and
-  steering messages, assistant text, summaries and the summary's copy/chrome
-  row) stays visible.
+  unknown surfaces (`unknown`) and workflow runs (`workflow-run`) are folded
+  like any other work block — merged with the adjacent tool/think run, or each
+  behind its own `1 blocks folded` bar (expandable, so they stay reachable).
+  ONLY the three diagnostics — `model-retry`, `turn-error`,
+  `turn-max-tokens` — never fold: they render the official cell view
+  unconditionally and always stay visible. Plain text (user and steering
+  messages, assistant text, summaries and the summary's copy/chrome row) also
+  stays visible.
 - **User input**: a user message whose text overflows 3 lines is clamped to
   3 lines with an `Expand` toggle below the bubble (shown only when
   the text really overflows, measured via ResizeObserver). The clamp lives
@@ -119,16 +119,16 @@ official primitives).
 
 ## DSH version
 
-Exclusively supports the three current DSH release channels: **latest
-`0.1.2-rc.1`** and **new/next `0.1.2-rc.1`** (npm `latest` / `next` tags,
-rc channel), and **alpha `0.1.3-alpha.2`** (npm `alpha` tag). Older releases
-are intentionally out of scope — the version-compatibility layers for them
-have been removed (no `useSession`-carried chat adapter, no namespace probe,
-no `status`/`final` fallbacks). Both channels share ONE chat-node seat kit:
-`useChat` returns the chat target (`chat.legacy.turnEnds` is the turn
-closure), `useSession` only the window flags, and both register the
-chat-cell dictionaries under `chat`. The remaining differences — the
-alpha-only `loadImage` owner kit, the 0.1.3 user-bubble update (official
+Exclusively supports the current DSH release channel: **alpha
+`0.1.3-alpha.2`** (npm `alpha` tag; the version the harness ships today).
+Older releases are intentionally out of scope — the version-compatibility
+layers for them have been removed (no `useSession`-carried chat adapter, no
+namespace probe, no `status`/`final` fallbacks, no plugin-owned turn-level
+big fold — that fold is product-owned). The channel shares ONE chat-node
+seat kit: `useChat` returns the chat target (`chat.legacy.turnEnds` is the
+turn closure), `useSession` only the window flags, and the host registers
+the chat-cell dictionaries under `chat`. The remaining channel details — the
+`loadImage` owner kit, the 0.1.3 user-bubble update (official
 `projectUserText` signature growth, `file` content blocks with generic-file
 cards) — are sealed in
 `src/client/snapshot-face.ts` (snapshot normalization),
@@ -136,6 +136,17 @@ cards) — are sealed in
 `src/client/UserNodeWrapper.tsx` (user-text + attachment kits); the runtime
 overlay validates the live SlotCore shape and fails closed (plugin stays
 inert) if the relevant internals change.
+
+`dsh-fold` is a **pure browser-side plugin**: it reads only the chat
+snapshot the shell hands to every seat (via the `useChat`/`useSession`
+selector hooks), never the session event log. It therefore declares no
+runtime dependency on the DSH core (`@deepseek-ai/dsh-session`,
+`dsh-agent`, `dsh-llm-*`, …) — an install can never drag a second,
+version-skewed DSH runtime next to the host's. The only runtime imports are
+the shell-owned client packages, declared as peer dependencies and resolved
+to the host's own instances at boot (`dsh-client-ui-slots`,
+`dsh-client-ui-primitives`, `dsh-client-ui-attachment`, `dsh-attachment`,
+`react`).
 
 ## Architecture / extension seam
 
@@ -164,11 +175,17 @@ ChatView (conversation.view)
                    ours:     UserNodeWrapper (priority -100)
                                 └─ product bubble replica from official
                                      primitives + 3-line clamp + Expand/Collapse
-            └─ cells "compaction" / "context" / "manual-compaction" / "command":
+            └─ cells "compaction" / "context" / "manual-compaction" / "command"
+                / "unknown" / "workflow-run":
                    product:  CompactionItem / ContextInjectionRow / … (priority 0)
                    ours:     NoticeNodeWrapper (priority -100)
-                                └─ one-line folded bar; expands to the official
+                                └─ merges with the adjacent run or renders a
+                                     one-line folded bar; expands to the official
                                      view (command keeps its commandview slot)
+             └─ cells "model-retry" / "turn-error" / "turn-max-tokens":
+                   ours:     NoticeNodeWrapper (priority -100)
+                                └─ NEVER folds: delegates straight to the
+                                     official cell view, always visible
 ```
 
 1. **Seam**: the keyed Chat slot `conversation.chat.node`, cells `tool-call`,
@@ -256,7 +273,7 @@ owned by the plugin fiber / ctx.effect).
 ```bash
 pnpm install          # esbuild, typescript, @types/react, react, ui-slots (devDeps)
 pnpm build            # tsc --noEmit + esbuild bundles (lib/)
-pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold · overlay (real ui-slots) · bundle smoke · component · assistant · user · notice · integration
+pnpm test             # 14 suites: group · tool-row · auto-load · overlay (real ui-slots) · bundle smoke · component · assistant · user · notice · integration · session-api (real dsh-session) · runtime-hygiene
 ```
 
 ## Acceptance mapping
@@ -280,7 +297,7 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
 | 15 running bash in a group | bar shows the real block row: `Bash · <description/command>` |
 | 16 streaming think (no tool yet) | bar shows `Think · <latest line>` |
 | 17 all settled | bar left side empty |
-| 18 compaction/context/command | folded (`1 blocks folded`), inside the big fold when closed |
+| 18 compaction/context/command | folded (`1 blocks folded`) or merged with the adjacent run; `model-retry`/`turn-error`/`turn-max-tokens` never fold |
 | 19 long user input, legacy clamp | still exactly 3 lines + bottom gap (padding-free clamp box) |
 | 20 scroll to top with older history | auto-loads the next page (no click), once per scroll-to-top |
 | 21 mid-scroll / no history / loading | no auto-load |
@@ -303,9 +320,10 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
   (`toolRowModel` + the running Think row) — same titles/summaries as the
   product rows, but re-rendered by the plugin; a future DSH changing the row
   model's titles or summary keys must be mirrored in `tool-row.ts`.
-- Diagnostics (model-retry, turn-error, turn-max-tokens, unknown,
-  workflow-run) fold too, per the all-non-text rule — each behind an
-  expandable `1 blocks folded` bar, so failures stay reachable in one click.
+- Diagnostics (`model-retry`, `turn-error`, `turn-max-tokens`) are NEVER
+  folded — they render the official cell views unconditionally and always
+  stay visible; the other notices (`compaction`, `context`, …) fold into
+  bars but remain expandable, so failures stay reachable in one click.
 - Group identity = first member's stable node key. If older history is
   loaded that prepends a tool call *before* the current leader, leadership
   moves to the new first node and that group's expanded state resets.
@@ -320,15 +338,14 @@ pnpm test             # 13 suites: group · tool-row · auto-load · turn-fold �
 
 ```
 src/client/group.ts               pure grouping over the snapshot (unit-tested)
-src/client/turn-fold.ts           turn-level big fold over the snapshot (unit-tested)
 src/client/tool-row.ts            running-tool row model (product toolRowModel replica)
 src/client/auto-load.ts           scroll-to-top auto-load-older (sessions scope)
 src/client/AutoLoadHost.tsx       seat ref anchor wiring seats into the auto-loader
-src/client/snapshot-face.ts       release-agnostic snapshot adapter (rc + alpha)
+src/client/snapshot-face.ts       chat-target snapshot adapter (consumer of the seat kit)
 src/client/ToolCallGroupView.tsx  group row (live block content) + official members
 src/client/AssistantNodeWrapper.tsx assistant-step shadow (official delegation)
 src/client/UserNodeWrapper.tsx    user bubble replica + 3-line clamp + toggle
-src/client/NoticeNodeWrapper.tsx  compaction/context/manual-compaction/command shadow
+src/client/NoticeNodeWrapper.tsx  notice-cell shadow (diagnostics never fold)
 src/client/registry.ts            shared live-registry access for delegation
 src/client/translate.ts           shared fold translate slot
 src/client/slots-core-overlay.ts  reversible SlotCore overlay (docs/core-patch.md)
@@ -339,7 +356,8 @@ src/host/index.ts                 minimal host anchor
 cordis.patch.yml                  bundle patch layer (host row)
 build.mjs                         tsc + esbuild
 scripts/install-dsh.cjs           install/uninstall helper
-test/                             group · tool-row · auto-load · turn-fold · overlay · bundle-smoke · render suites
+scripts/verify-pack.mjs           release gate: pnpm pack + artifact scan
+test/                             group · tool-row · auto-load · overlay · bundle-smoke · render suites · session-api (real dsh-session) · runtime-hygiene
 docs/core-patch.md                the one core change, as a source patch
 ```
 
