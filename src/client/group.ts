@@ -39,7 +39,8 @@ export interface ChatNodeLike {
     readonly kind: 'turn' | 'step' | 'unresolved'
     readonly turn?: {
       readonly turn: number
-      /** Resolved turn boundary (alpha 0.1.2 exposes `closed`; absent on rc). */
+      /** Resolved turn boundary (both supported channels set it).
+       *  `closed` closes the big-fold span; `open`/`unknown` do not. */
       readonly status?: 'open' | 'closed' | 'unknown'
     }
   }
@@ -47,10 +48,8 @@ export interface ChatNodeLike {
     readonly root?: ToolBlockLike
     /** Assistant payload: blocks are the step's content (text/reasoning/tool-call/...). */
     readonly blocks?: readonly AssistantBlockLike[]
-    /** Lifecycle signal (alpha 0.1.2; absent on rc 0.1.1). */
+    /** Lifecycle signal (defined on both supported channels). */
     readonly status?: 'running' | 'settled' | 'interrupted'
-    /** rc 0.1.1 streaming signal: the durable final node is absent while the step streams. */
-    readonly final?: unknown
   }
 }
 
@@ -127,10 +126,11 @@ const TOOL_KIND = 'tool-call'
 const ASSISTANT_KIND = 'assistant-step'
 
 /**
- * Alpha 0.1.2's turn-process CONTROLLER node: the product projects one per
- * closed turn (its compact-transcript disclosure bar). It is a hidden
+ * The alpha channel's turn-process CONTROLLER node: the product projects one
+ * per closed turn (its compact-transcript disclosure bar). It is a hidden
  * controller, never a rendered member — it must neither split a tool run nor
- * count as a folded block, and it must not become a group leader.
+ * count as a folded block, and it must not become a group leader. The rc
+ * channel never emits it, so the entries below are alpha-only no-ops there.
  */
 export const TURN_PROCESS_NODE_KIND = 'turn-process'
 
@@ -213,15 +213,12 @@ export function latestWorkNode(snapshot: GroupSnapshotLike): ChatNodeLike | unde
 }
 
 /** Whether a work node is still running/streaming (as opposed to settled):
- * a tool call without a result, or an assistant step in `running` state.
- * rc 0.1.1 has no `status` field — a step streams while its durable `final`
- * node is still absent, so that state counts as running too. */
+ * a tool call without a result, or an assistant step in `running` state
+ * (`status` is defined on every supported channel). */
 export function isLiveWorkNode(node: ChatNodeLike | undefined): boolean {
   if (node === undefined) return false
   if (node.kind === TOOL_KIND) return isRunningBlock(node.data?.root)
-  const status = node.data?.status
-  if (status !== undefined) return status === 'running'
-  return node.data?.final === undefined
+  return node.data?.status === 'running'
 }
 
 /** Wire tool name from either lifecycle form. */
@@ -230,9 +227,9 @@ export function callName(block: ToolBlockLike): string {
 }
 
 /** A node continues the current run (same turn): a tool call, a transparent
- * think row, a turn-process controller (alpha: transparent, never splits),
- * or any inline notice — folded in with the adjacent work, never splitting a
- * chain into separate bars. */
+ * think row, a turn-process controller (alpha channel: transparent, never
+ * splits), or any inline notice — folded in with the adjacent work, never
+ * splitting a chain into separate bars. */
 function continuesRun(node: ChatNodeLike, anchor: ChatNodeLike): boolean {
   if (!sameTurn(node, anchor)) return false
   return node.kind === TOOL_KIND || node.kind === TURN_PROCESS_NODE_KIND
@@ -271,8 +268,8 @@ export function groupOf(snapshot: GroupSnapshotLike, nodeKey: string): ToolGroup
   for (const key of keys) {
     const member = snapshot.nodes.get(key)
     if (member === undefined) continue
-    // The turn-process controller (alpha) is flow-transparent: it extends the
-    // run but renders nothing and never counts as a folded block.
+    // The turn-process controller (alpha channel) is flow-transparent: it
+    // extends the run but renders nothing and never counts as a folded block.
     if (member.kind === TURN_PROCESS_NODE_KIND) continue
     const transparent: boolean = isTransparentAssistant(member)
     if (member.kind === TOOL_KIND) {

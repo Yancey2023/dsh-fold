@@ -1,12 +1,11 @@
 /**
- * Unit tests for the snapshot-face adapter — the release-agnostic seal
- * between the fold computations and the two DSH seat kits:
+ * Unit tests for the snapshot-face adapter — the seal between the fold
+ * computations and the chat-node seat kit shared by the supported channels
+ * (npm `latest`/`next` → 0.1.2-rc.1, npm `alpha` → 0.1.3-alpha.2):
  *
- *  - 0.1.2-alpha.1: `useChat` returns the Chat target directly
- *    (`{order, nodes, legacy: {turnEnds}}`); `useSession` carries only the
- *    session window flags.
- *  - 0.1.1-rc.2: no `useChat`; `useSession` carries the session snapshot
- *    with the chat at `.chat` and `turnEnds` at the session level.
+ *  - `useChat` returns the Chat target directly
+ *    (`{order, nodes, legacy: {turnEnds}}`);
+ *  - `useSession` carries only the session window flags.
  *
  * The React hook itself is exercised through the render tests
  * (component.test.mjs / user.test.mjs); this file covers the pure
@@ -20,52 +19,38 @@ function mapOf(nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// chatFaceOf: alpha chat target with legacy.turnEnds.
+// chatFaceOf: chat target with legacy.turnEnds (the shape `useChat` returns
+// on every supported channel).
 // ---------------------------------------------------------------------------
 {
   const chat = { order: ['a', 'b'], nodes: mapOf({ a: { key: 'a' } }), legacy: { turnEnds: new Map([[1, 7]]) } }
   const face = chatFaceOf(chat)
   assert.equal(face.order, chat.order, 'order passes through')
   assert.equal(face.nodes, chat.nodes, 'nodes passes through')
-  assert.ok(face.turnEnds && face.turnEnds.has(1), 'alpha: legacy.turnEnds is the closure map')
+  assert.ok(face.turnEnds && face.turnEnds.has(1), 'legacy.turnEnds is the closure map')
 }
 
 // ---------------------------------------------------------------------------
-// chatFaceOf: rc-era session snapshot (`.chat` member + session-level
-// turnEnds).
+// chatFaceOf: bare {order, nodes} (no closure map), and garbage.
 // ---------------------------------------------------------------------------
 {
-  const chat = { order: ['a'], nodes: mapOf({ a: { key: 'a' } }) }
-  const session = { chat, turnEnds: new Map([[2, 9]]), hasMore: true, loadingOlder: false }
-  const face = chatFaceOf(session)
-  assert.equal(face.order, chat.order, 'rc: unwraps .chat')
-  assert.ok(face.turnEnds && face.turnEnds.has(2), 'rc: falls back to the session-level turnEnds')
-}
-
-// ---------------------------------------------------------------------------
-// chatFaceOf: chat.turnEnds (defensive), bare {order, nodes}, and garbage.
-// ---------------------------------------------------------------------------
-{
-  const chat = { order: ['a'], nodes: mapOf({}), turnEnds: new Map([[3, 1]]) }
-  assert.ok(chatFaceOf(chat).turnEnds && chatFaceOf(chat).turnEnds.has(3), 'chat.turnEnds accepted')
   const bare = { order: ['a'], nodes: mapOf({}) }
   assert.deepEqual(chatFaceOf(bare).turnEnds, undefined, 'bare chat has no closure map')
   assert.equal(chatFaceOf(undefined).order.length, 0, 'garbage yields the empty face')
-  assert.equal(chatFaceOf({ chat: undefined }).order.length, 0, 'session without chat yields the empty face')
-  assert.equal(chatFaceOf({ chat: { order: ['x'], nodes: mapOf({}) } }).order[0], 'x', 'session.chat wins when present')
+  assert.equal(chatFaceOf({ chat: undefined }).order.length, 0, 'non-chat snapshot yields the empty face')
+  assert.equal(chatFaceOf({ order: 'x' }).order.length, 0, 'malformed order yields the empty face')
 }
 
 // ---------------------------------------------------------------------------
-// Precedence: legacy.turnEnds > chat.turnEnds > session.turnEnds.
+// chatFaceOf: the closure map comes ONLY from legacy.turnEnds (both channels
+// define it on the Chat target; top-level turnEnds is not part of the
+// contract and must not be picked up).
 // ---------------------------------------------------------------------------
 {
-  const session = {
-    chat: { order: [], nodes: mapOf({}), turnEnds: new Map([[1, 1]]), legacy: { turnEnds: new Map([[2, 2]]) } },
-    turnEnds: new Map([[3, 3]]),
-  }
-  const face = chatFaceOf(session)
-  assert.ok(face.turnEnds && face.turnEnds.has(2), 'legacy.turnEnds wins')
-  assert.ok(!face.turnEnds.has(1) && !face.turnEnds.has(3), 'lower-precedence maps excluded')
+  const chat = { order: ['a'], nodes: mapOf({}), legacy: { turnEnds: new Map([[2, 2]]) }, turnEnds: new Map([[1, 1]]) }
+  const face = chatFaceOf(chat)
+  assert.ok(face.turnEnds && face.turnEnds.has(2), 'legacy.turnEnds is the closure map')
+  assert.ok(!face.turnEnds.has(1), 'top-level turnEnds is ignored')
 }
 
 // ---------------------------------------------------------------------------

@@ -108,9 +108,9 @@ export interface UserNodeWrapperProps {
   t?: (key: string, params?: Record<string, unknown>) => string
   /** Session id (big-fold state is keyed per session; auto-load scope). */
   sessionId?: string
-  /** Framework session selector hook (window flags; on rc also the chat). */
+  /** Framework session selector hook (window flags). */
   useSession?: SelectorHook
-  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  /** Chat-target selector hook (the transcript, on both supported channels). */
   useChat?: SelectorHook
   /** Everything else the renderer passed (unused, but must be accepted). */
   [key: string]: unknown
@@ -124,7 +124,7 @@ const NOOP_T: Translate = (key, params) => (params !== undefined && 'count' in p
  * Parse a user content block list exactly like the release's contentParts:
  * rc collects text + images; alpha 0.1.3 collects text + attachments
  * (images AND generic files) + rest. The rc-style `images` list is derived
- * for the rc-era single-gallery call and the ImageGallery fallback.
+ * for the rc channel single-gallery call and the ImageGallery fallback.
  */
 function contentParts(content: readonly unknown[]): {
   text: string
@@ -280,7 +280,7 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
   const content = Array.isArray(rawContent) ? rawContent : typeof rawContent === 'string' ? [{ type: 'text', text: rawContent }] : []
   const { text, attachments, images, rest } = contentParts(content)
   // Alpha seats receive `loadImage` on their owner kit; rc seats do not. On
-  // the rc-era path a `file` block (a 0.1.3 content shape the rc data model
+  // the rc channel path a `file` block (a 0.1.3 content shape the rc data model
   // cannot produce) still surfaces as a JsonBlock extra instead of dropping.
   const alphaKit = typeof loadImage === 'function'
   const extraRest = alphaKit ? rest : [...rest, ...attachments.filter((a): a is { type: 'file'; file: UserFileAttachmentLike } => a.type === 'file')]
@@ -293,7 +293,7 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
     if (attachments.length === 0) return null
     if (typeof renderMessageImages === 'function') {
       if (!alphaKit) {
-        // rc-era owner: one gallery call with the whole image list.
+        // rc channel owner: one gallery call with the whole image list.
         return renderMessageImages({ images, align: 'end' })
       }
       // alpha 0.1.3 owner: one call per image (compact when the attachment

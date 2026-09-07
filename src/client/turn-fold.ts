@@ -18,14 +18,11 @@ import { isTransparentAssistant, turnOf } from './group'
 import type { ChatNodeLike, GroupSnapshotLike } from './group'
 
 export interface TurnSessionLike {
-  /** Chat target (order + nodes) with the release's turn-closure map — the
+  /** Chat face (order + nodes) with the normalized turn-closure map — the
    * release-normalized face the snapshot adapter produces. */
   readonly order?: readonly string[]
   readonly nodes?: { get(key: string): ChatNodeLike | undefined }
   readonly turnEnds?: ReadonlyMap<number, number>
-  /** rc-era compatibility: the raw session wrapper carrying the chat at
-   * `.chat` and the closure map at the session top level. */
-  readonly chat?: GroupSnapshotLike & { readonly turnEnds?: ReadonlyMap<number, number> }
 }
 
 export interface TurnProcessInfo {
@@ -64,9 +61,10 @@ export const FOLDABLE_KINDS = new Set([
   'command',
   'unknown',
   'workflow-run',
-  // Alpha 0.1.2 projects a hidden turn-process controller per closed turn;
-  // it belongs to the process span (its seat is the product's own, hidden in
-  // normal mode, so this entry only matters for the span computation).
+  // The alpha channel projects a hidden turn-process controller per closed
+  // turn; it belongs to the process span (its seat is the product's own,
+  // hidden in normal mode, so this entry only matters for the span
+  // computation). The rc channel never emits it.
   'turn-process',
 ])
 
@@ -75,20 +73,15 @@ export const FOLDABLE_KINDS = new Set([
  * turn is still open, has no summary, or has nothing to fold.
  */
 export function turnProcessOf(session: TurnSessionLike, nodeKey: string): TurnProcessInfo | null {
-  // The input is either the normalized chat face (order/nodes/turnEnds) or
-  // the rc-era session wrapper ({chat, turnEnds}); prefer the wrapper's
-  // `.chat` when the direct members are absent.
-  const face: GroupSnapshotLike & { readonly turnEnds?: ReadonlyMap<number, number> } =
-    session.chat !== undefined && Array.isArray(session.chat.order)
-      ? session.chat
-      : session as GroupSnapshotLike & { readonly turnEnds?: ReadonlyMap<number, number> }
+  // The input is the normalized chat face (order/nodes/turnEnds).
+  const face = session as GroupSnapshotLike & { readonly turnEnds?: ReadonlyMap<number, number> }
   const node = face.nodes.get(nodeKey)
   if (node === undefined) return null
   const turn = turnOf(node)
   if (turn === undefined) return null
-  // Turn closure: the legacy/compat `turnEnds` map (both releases) or the
-  // alpha location boundary status.
-  const turnEnds = face.turnEnds ?? session.turnEnds
+  // Turn closure: the normalized `turnEnds` map (both channels expose it via
+  // `chat.legacy.turnEnds`) or the shared turn-location boundary status.
+  const turnEnds = face.turnEnds
   const closedByMap = turnEnds !== undefined && turnEnds.has(turn)
   const closedByLocation =
     (node.location?.kind === 'turn' || node.location?.kind === 'step')

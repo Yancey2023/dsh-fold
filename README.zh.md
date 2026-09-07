@@ -24,13 +24,16 @@
 
 ## DSH 版本
 
-同时适配 DSH 的三个发布通道：**latest `0.1.2-rc.1`**（npm `latest` /
-`next` 标签，RC 通道）与 **alpha `0.1.3-alpha.2`**（npm `alpha` 标签；保留
-`useChat` 聊天快照、`chat.legacy.turnEnds`、`turn-process` 控制器节点、
-产品自带的紧凑转录折叠，并适配 0.1.3 的用户气泡更新——官方
-`projectUserText` 签名变化、seat 新增 `loadImage` owner kit、`file`
-内容块与通用文件卡片）。RC 通道使用 `useSession.chat` 快照形态；alpha
-使用 `useChat` 聊天快照。版本差异封闭在
+仅支持 DSH 当前的三个发布通道：**latest `0.1.2-rc.1`** 与 **new/next
+`0.1.2-rc.1`**（npm `latest` / `next` 标签，RC 通道）、**alpha
+`0.1.3-alpha.2`**（npm `alpha` 标签）。更早版本已不在支持范围——针对它们
+的兼容层已全部移除（`useSession` 携带聊天快照的适配、命名空间探测、
+`status`/`final` 兜底判断）。两个通道共用同一套 chat-node seat kit：
+`useChat` 返回聊天目标（`chat.legacy.turnEnds` 为轮次闭合信号）、
+`useSession` 只提供窗口标志位，且聊天 cell 字典都注册在 `chat`
+命名空间下。剩余差异——alpha 专属的 `loadImage` owner kit、0.1.3 的
+用户气泡更新（官方 `projectUserText` 签名变化、`file` 内容块与通用
+文件卡片）——封闭在
 `src/client/snapshot-face.ts`（快照归一化）、`src/client/registry.ts`
 （`compositeT` 命名空间兜底）与 `src/client/UserNodeWrapper.tsx`
 （用户文本 + 附件 kit）三个模块中；运行时 overlay 在 SlotCore 结构

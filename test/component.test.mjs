@@ -29,9 +29,12 @@ function settled(name) {
 
 function makeSession(order, nodes, turnEnds) {
   const map = new Map(nodes.map((n) => [n.key, n]))
+  // The Chat target `useChat` returns on both supported channels; the
+  // turn-closure map lives at legacy.turnEnds.
   return {
-    chat: { order, nodes: { get: (k) => map.get(k) } },
-    ...(turnEnds ? { turnEnds } : {}),
+    order,
+    nodes: { get: (k) => map.get(k) },
+    ...(turnEnds ? { legacy: { turnEnds } } : {}),
   }
 }
 
@@ -46,11 +49,9 @@ function makeProps(snapshot, nodeKey, locale = 'zh') {
     return marker ?? `FALLBACK:${opts.entryKey}`
   }
   return {
-    node: snapshot.chat.nodes.get(nodeKey),
-    useSession: (sel, eq) => {
-      const value = sel(snapshot)
-      return value
-    },
+    node: snapshot.nodes.get(nodeKey),
+    useChat: (sel, eq) => sel(snapshot),
+    useSession: (sel, eq) => sel({ hasMore: false, loadingOlder: false }),
     renderSlot,
     selectedCallId: undefined,
     cwd: '/ws',
@@ -351,17 +352,15 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// ALPHA (0.1.2-alpha.1) seat kit: `useChat` carries the chat target directly
-// (order/nodes/legacy.turnEnds), `useSession` carries only the window flags.
-// The adapter must produce the same group behavior as the rc-era kit.
+// Current-channels seat kit (both rc.1 and alpha.2): `useChat` carries the
+// chat target directly (order/nodes/legacy.turnEnds), `useSession` carries
+// only the window flags — the same kit every render test drives through
+// makeProps. These cases add the product turn-process fields on top.
 // ---------------------------------------------------------------------------
 
-/** Alpha-shaped props: chat target + session window flags + product fold. */
+/** Seat-kit props with explicit window flags + product turn process. */
 function makeAlphaProps(chatSnapshot, sessionSnapshot, nodeKey, turnProcess) {
-  const base = makeProps({ chat: chatSnapshot }, nodeKey)
-  // makeProps' useSession already unwraps via the adapter (session shape);
-  // here the chat target is OUTSIDE the session snapshot, so useChat is the
-  // dedicated chat selector and useSession only sees the window flags.
+  const base = makeProps(chatSnapshot, nodeKey)
   return {
     ...base,
     useChat: (sel, eq) => sel(chatSnapshot),

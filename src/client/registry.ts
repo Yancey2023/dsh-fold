@@ -40,7 +40,7 @@ export type TranslateLike = (key: string, params?: Record<string, unknown>) => s
 
 /** Conversation-namespace translate (set by the plugin entry; the user-bubble
  * replica needs the product `image.*` labels, which live in the conversation
- * namespace on BOTH releases — and on rc they are the ONLY namespace). */
+ * namespace on both supported channels). */
 let conversationT: TranslateLike | undefined
 
 export function setConversationT(t: TranslateLike | undefined): void {
@@ -52,10 +52,10 @@ export function getConversationT(): TranslateLike | undefined {
 }
 
 /**
- * Chat-namespace translate (alpha 0.1.2 only). Alpha moved the chat-cell
+ * Chat-namespace translate. Both supported channels register the chat-cell
  * dictionary keys (copy / clock.* / json.truncated / message.extraBlock, …)
- * out of `conversation` into the `chat` namespace; rc has no `chat` fallback.
- * Bound lazily by the plugin entry after probing which namespace is live.
+ * under the `chat` namespace; conversation keeps the image labels. Bound by
+ * the plugin entry at apply (no probe needed — every supported host has it).
  */
 let chatT: TranslateLike | undefined
 
@@ -69,10 +69,11 @@ export function getChatT(): TranslateLike | undefined {
 
 /**
  * Composite translate for plugin-owned renderers (the user bubble replica and
- * delegated official cell views): resolve from the live chat namespace first
- * (alpha), fall back to the conversation seat / image namespace, else the raw
- * key. `translate` returns the KEY verbatim when a dictionary entry is
- * missing, so a differing result means the key actually translated.
+ * delegated official cell views): resolve from the `chat` namespace first
+ * (both channels register the chat-cell keys there), fall back to the
+ * conversation seat / image namespace, else the raw key. `translate` returns
+ * the KEY verbatim when a dictionary entry is missing, so a differing result
+ * means the key actually translated.
  */
 export function compositeT(primary?: TranslateLike, secondary?: TranslateLike): TranslateLike {
   const first = primary ?? secondary

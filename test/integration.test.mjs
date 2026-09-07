@@ -1,11 +1,12 @@
 /**
  * Integration test: the complete slot pipeline as the page runs it.
  *
- *   real SlotCore (0.1.1-rc.2) + overlay
+ *   real SlotCore (0.1.3-alpha.2) + overlay
  *     → product registers tool-call cell (official tree) + bash toolview
  *     → plugin registers shadow (priority -100, children tool.call.toolview)
  *     → emulated keyed dispatch: winner renders ToolCallGroupView with a
- *       fake session snapshot + renderSlot bound to the entry's children
+ *       fake chat target + window flags + renderSlot bound to the entry's
+ *       children
  *     → collapsed bar / expand / member delegation through tool.call.toolview
  *     → shadow disposal restores the official renderer, child slot intact
  */
@@ -26,8 +27,9 @@ function cellWinner(core, slotKey, entryKey) {
   return undefined
 }
 
-/** Emulates the web-react renderer's standardKit + keyed dispatch. */
-function renderer(core, session, dicts) {
+/** Emulates the web-react renderer's standardKit + keyed dispatch: `useChat`
+ * hands the chat target to the cells, `useSession` only the window flags. */
+function renderer(core, chat, dicts) {
   const t = (key, params) => {
     const template = dicts[key] ?? key
     return params ? template.replace(/\{(\w+)\}/g, (_m, n) => String(params[n] ?? '')) : template
@@ -36,7 +38,8 @@ function renderer(core, session, dicts) {
     const kit = {
       ...ownerProps,
       t,
-      useSession: (sel) => sel(session),
+      useChat: (sel) => sel(chat),
+      useSession: (sel) => sel({ hasMore: false, loadingOlder: false }),
       renderSlot: (childKey, childOwner, opts) => {
         const declared = entry.children?.[childKey]
         if (declared === undefined) throw new Error(`child slot ${childKey} not declared by entry`)
@@ -121,10 +124,8 @@ setGroupT((key, params) => {
 
 const dicts = { running: '正在运行', group: '工具调用组', folded: '{count} 个块已被折叠' }
 const session = {
-  chat: {
-    order: ['t1', 't2', 't3'],
-    nodes: { get: (k) => ({ t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')), t3: toolNode('t3', 1, running('bash')) })[k] },
-  },
+  order: ['t1', 't2', 't3'],
+  nodes: { get: (k) => ({ t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')), t3: toolNode('t3', 1, running('bash')) })[k] },
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +138,7 @@ const render = renderer(core, session, dicts)
 
 // Collapsed bar (bash running): label + count 3.
 {
-  const node = session.chat.nodes.get('t1')
+  const node = session.nodes.get('t1')
   const root = create(render('conversation.chat.node', shadowEntry, { node, selectedCallId: undefined, cwd: '/ws', openFile: () => {}, inspectCall: () => {} }))
   const text = textOf(root.toJSON())
   assert.ok(text.includes('正在运行') && text.includes('Bash') && text.includes('echo hi'), 'live block row (visually hidden label + Bash · command)')
@@ -159,12 +160,10 @@ const render = renderer(core, session, dicts)
 // ---------------------------------------------------------------------------
 {
   const settledSession = {
-    chat: {
-      order: ['t1', 't2', 't3'],
-      nodes: { get: (k) => ({ t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')), t3: toolNode('t3', 1, settled('bash')) })[k] },
-    },
+    order: ['t1', 't2', 't3'],
+    nodes: { get: (k) => ({ t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')), t3: toolNode('t3', 1, settled('bash')) })[k] },
   }
-  const node = settledSession.chat.nodes.get('t1')
+  const node = settledSession.nodes.get('t1')
   const root = create(renderer(core, settledSession, dicts)('conversation.chat.node', shadowEntry, { node, cwd: '/ws', openFile: () => {}, inspectCall: () => {} }))
   const text = textOf(root.toJSON())
   assert.ok(!text.includes('正在运行'), 'left side empty')
@@ -186,34 +185,28 @@ const render = renderer(core, session, dicts)
 
   // transparent + grouped -> null
   const groupedSession = {
-    chat: {
-      order: ['a1', 't1', 't2'],
-      nodes: { get: (k) => ({ a1: assistantNode('a1', [think('hmm')]), t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')) })[k] },
-    },
+    order: ['a1', 't1', 't2'],
+    nodes: { get: (k) => ({ a1: assistantNode('a1', [think('hmm')]), t1: toolNode('t1', 1, settled('read')), t2: toolNode('t2', 1, settled('grep')) })[k] },
   }
-  const r1 = create(renderer(core, groupedSession, dicts)('conversation.chat.node', assistantEntry, { node: groupedSession.chat.nodes.get('a1') }))
+  const r1 = create(renderer(core, groupedSession, dicts)('conversation.chat.node', assistantEntry, { node: groupedSession.nodes.get('a1') }))
   assert.ok(r1.toJSON() !== null && r1.toJSON().props['data-tool-group-hidden'] !== undefined, 'grouped transparent assistant hidden (no gap)')
   r1.unmount()
 
   // text-bearing -> official (delegation through the registry)
   const textSession = {
-    chat: {
-      order: ['a1'],
-      nodes: { get: (k) => ({ a1: assistantNode('a1', [think('hmm'), textBlock('最终结果是 ABC。')]) })[k] },
-    },
+    order: ['a1'],
+    nodes: { get: (k) => ({ a1: assistantNode('a1', [think('hmm'), textBlock('最终结果是 ABC。')]) })[k] },
   }
-  const r2 = create(renderer(core, textSession, dicts)('conversation.chat.node', assistantEntry, { node: textSession.chat.nodes.get('a1') }))
+  const r2 = create(renderer(core, textSession, dicts)('conversation.chat.node', assistantEntry, { node: textSession.nodes.get('a1') }))
   assert.equal(r2.toJSON(), 'OFFICIAL_ASSISTANT', 'text-bearing assistant delegates to the official view')
   r2.unmount()
 
   // standalone transparent -> folded into its own bar (think-only group)
   const standaloneSession = {
-    chat: {
-      order: ['a1'],
-      nodes: { get: (k) => ({ a1: assistantNode('a1', [think('standalone')]) })[k] },
-    },
+    order: ['a1'],
+    nodes: { get: (k) => ({ a1: assistantNode('a1', [think('standalone')]) })[k] },
   }
-  const r3 = create(renderer(core, standaloneSession, dicts)('conversation.chat.node', assistantEntry, { node: standaloneSession.chat.nodes.get('a1') }))
+  const r3 = create(renderer(core, standaloneSession, dicts)('conversation.chat.node', assistantEntry, { node: standaloneSession.nodes.get('a1') }))
   const r3Text = textOf(r3.toJSON())
   assert.ok(r3Text.includes('1 个块已被折叠'), 'standalone think row folds into a bar')
   assert.ok(!r3Text.includes('Think') && !r3Text.includes('standalone'), 'settled think leaves the folded bar empty')

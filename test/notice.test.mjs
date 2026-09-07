@@ -29,7 +29,13 @@ function thinkAssistant(key, turn) {
 }
 function makeSession(order, nodes, turnEnds) {
   const map = new Map(nodes.map((n) => [n.key, n]))
-  return { chat: { order, nodes: { get: (k) => map.get(k) } }, ...(turnEnds ? { turnEnds } : {}) }
+  // The Chat target `useChat` returns on both supported channels; the
+  // turn-closure map lives at legacy.turnEnds.
+  return {
+    order,
+    nodes: { get: (k) => map.get(k) },
+    ...(turnEnds ? { legacy: { turnEnds } } : {}),
+  }
 }
 
 const DICTS = {
@@ -48,8 +54,9 @@ const t = (key, params) => {
 
 function makeProps(snapshot, nodeKey) {
   return {
-    node: snapshot.chat.nodes.get(nodeKey),
-    useSession: (sel) => sel(snapshot),
+    node: snapshot.nodes.get(nodeKey),
+    useChat: (sel) => sel(snapshot),
+    useSession: (sel) => sel({ hasMore: false, loadingOlder: false }),
     renderSlot: (childKey, owner, opts) => `CMDVIEW:${childKey}:${opts.entryKey}`,
     t,
     openFile: () => {},

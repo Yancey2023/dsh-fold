@@ -1,23 +1,23 @@
 /**
- * Unified conversation-snapshot face across DSH releases.
+ * Unified conversation-snapshot face across the supported DSH channels.
  *
- * The chat-node seats of `conversation.chat.node` receive two framework
- * selector kits, and WHICH one carries the transcript data changed between
- * releases:
+ * Supported releases (npm `latest`/`next` → 0.1.2-rc.1, npm `alpha` →
+ * 0.1.3-alpha.2) share ONE chat-node seat kit: the renderer's standard
+ * session kit hands every `conversation.chat.node` cell TWO selector hooks
+ * (the product's own turn-tail cell consumes `useChat` from its props on
+ * both channels, so it is always provided):
  *
- *  - DSH 0.1.2-alpha.1: `useChat` returns the Chat target snapshot directly
- *    (`{order, nodes, locations, navigation, timeline, legacy}`); `useSession`
- *    returns the SESSION-level snapshot (`{hasMore, loadingOlder, ...}`) that
- *    no longer carries the transcript.
- *  - DSH 0.1.1-rc.2: `useChat` does not exist on the seat; `useSession`
- *    carries the session snapshot whose `.chat` member IS the chat target
- *    (`{chat: {order, nodes, legacy}, turnEnds, hasMore, loadingOlder}`).
+ *  - `useChat` returns the Chat target snapshot directly
+ *    (`{order, nodes, locations, navigation, timeline, legacy}`), where the
+ *    turn-closure map lives at `chat.legacy.turnEnds`;
+ *  - `useSession` returns the SESSION-level snapshot
+ *    (`{hasMore, loadingOlder, ...}`) with the window flags.
  *
- * This module normalizes both onto one stable `SnapshotFace` ({chat,
- * hasMore, loadingOlder}), so the fold computations (group / turn / live)
- * stay release-agnostic. The chat face folds the release's turn-closure
- * signal into one `turnEnds` map: `chat.legacy.turnEnds` (both releases),
- * then `chat.turnEnds`, then the legacy session-level `turnEnds`.
+ * This module normalizes the chat target onto one stable `SnapshotFace`
+ * ({chat, hasMore, loadingOlder}), so the fold computations (group / turn /
+ * live) stay channel-agnostic. The only remaining per-channel difference —
+ * the alpha-only `loadImage` owner kit and 0.1.3 file-attachment content —
+ * is handled in the user wrapper, not here.
  *
  * Reference stability: every face member is compared by reference through
  * the selector `eq` parameter, so the derived values stay memoizable with
@@ -34,7 +34,7 @@ export interface TurnEndsMap {
 export interface ChatFace {
   readonly order: readonly string[]
   readonly nodes: { get(key: string): ChatNodeLike | undefined }
-  /** Completed-turn map (release-normalized turn-closure signal). */
+  /** Completed-turn map (from `chat.legacy.turnEnds` on both channels). */
   readonly turnEnds?: ReadonlyMap<number, number>
 }
 
@@ -62,21 +62,16 @@ function isChatTarget(raw: unknown): raw is { order: readonly string[]; nodes: {
 
 /**
  * Normalize ONE raw snapshot into the chat face. Accepts the Chat target
- * (alpha `useChat`), the session snapshot (rc-era `useSession` with the chat
- * at `.chat`), or a bare `{order, nodes}` object (defensive / tests).
+ * (`useChat`'s value — every supported channel) or a bare `{order, nodes}`
+ * object (defensive / tests). The turn-closure map is read from
+ * `chat.legacy.turnEnds`, the field both channels define on the Chat target.
  */
 export function chatFaceOf(raw: unknown): ChatFace {
-  const session = raw as { chat?: unknown; turnEnds?: ReadonlyMap<number, number> } | null | undefined
-  const chat: unknown = session !== null && typeof session === 'object' && isChatTarget(session.chat) ? session.chat : raw
-  if (!isChatTarget(chat)) return EMPTY_CHAT
-  const chatValue = chat as { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } } & TurnEndsMap & {
+  if (!isChatTarget(raw)) return EMPTY_CHAT
+  const chat = raw as { order: readonly string[]; nodes: { get(key: string): ChatNodeLike | undefined } } & TurnEndsMap & {
     legacy?: TurnEndsMap
   }
-  const turnEnds =
-    chatValue.legacy?.turnEnds
-    ?? chatValue.turnEnds
-    ?? (session !== null && typeof session === 'object' ? session.turnEnds : undefined)
-  return { order: chatValue.order, nodes: chatValue.nodes, turnEnds }
+  return { order: chat.order, nodes: chat.nodes, turnEnds: chat.legacy?.turnEnds }
 }
 
 /** Reference-stable equality for the chat face (identity of each member). */
@@ -99,26 +94,21 @@ function windowFlagsEq(left: { hasMore: boolean; loadingOlder: boolean }, right:
 }
 
 /**
- * The per-seat snapshot face. Reads the chat target through `useChat` when
- * the host provides it (alpha), else through `useSession`'s `.chat` member
- * (rc-era); the window flags always come from `useSession`. Both selectors
- * are optional so render tests can omit them; a missing chat selector yields
- * the empty face (all folds disabled) instead of crashing.
+ * The per-seat snapshot face. The chat transcript always comes through
+ * `useChat` (both supported channels provide it on the cell kit); the window
+ * flags always come from `useSession`. Both selectors are optional so render
+ * tests can omit them; a missing chat selector yields the empty face (all
+ * folds disabled) instead of crashing.
  *
  * Hook discipline: exactly TWO selector calls happen — the chat call and the
- * flags call — regardless of the host release (on rc-era both calls go to
- * `useSession`, which is the same store twice; on alpha the chat call goes
- * to `useChat` and the flags call to `useSession`). The choice of hook never
- * flips for a given host build, so hook order stays stable.
+ * flags call — regardless of the host channel, with a stable hook order.
  */
 export function useSnapshotFace(props: { useChat?: unknown; useSession?: unknown }): SnapshotFace {
   const useChat = typeof props.useChat === 'function' ? (props.useChat as SelectorHook) : undefined
   const useSession = typeof props.useSession === 'function' ? (props.useSession as SelectorHook) : undefined
   const chat = useChat !== undefined
     ? useChat((snapshot: unknown) => chatFaceOf(snapshot), chatFaceEq)
-    : useSession !== undefined
-      ? useSession((snapshot: unknown) => chatFaceOf(snapshot), chatFaceEq)
-      : EMPTY_CHAT
+    : EMPTY_CHAT
   const flags = useSession !== undefined
     ? useSession((snapshot: unknown) => windowFlagsOf(snapshot), windowFlagsEq)
     : { hasMore: false, loadingOlder: false }

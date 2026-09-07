@@ -1,12 +1,12 @@
 /**
  * Minimal type declarations for the DSH packages this plugin imports.
  *
- * The REAL contracts live in the installed DSH (verified against 0.1.1-rc.2,
- * 0.1.2-alpha.5 / 0.1.2-rc.1 AND 0.1.3-alpha.2; see README's "Seam and data
- * model" section). These shims keep the repo typecheckable without a full
+ * The REAL contracts live in the installed DSH (verified against 0.1.2-rc.1
+ * AND 0.1.3-alpha.2; see README's "Seam and data model" section). These
+ * shims keep the repo typecheckable without a full
  * DSH checkout; the runtime contract is enforced by the DSH page itself
- * (fail-closed guards in slots-core-overlay.ts). The snapshot/seam
- * differences between the releases are handled in snapshot-face.ts (seat kit
+ * (fail-closed guards in slots-core-overlay.ts). The remaining per-channel
+ * differences are handled in snapshot-face.ts (seat kit
  * normalization), registry.ts (namespace fallback) and UserNodeWrapper.tsx
  * (attachment / user-text kits), never here.
  */

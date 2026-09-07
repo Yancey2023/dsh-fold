@@ -119,14 +119,18 @@ official primitives).
 
 ## DSH version
 
-Adapted to all three DSH release channels: **latest `0.1.2-rc.1`** (npm
-`latest` / `next` tags), and **alpha `0.1.3-alpha.2`** (npm `alpha` tag;
-`useChat` chat target, `chat.legacy.turnEnds`, the `turn-process` controller
-node, product compact-transcript fold, and the 0.1.3 user-bubble update —
-official `projectUserText` signature growth, the `loadImage` seat owner kit,
-`file` content blocks with generic-file cards). The rc channel uses the
-`useSession.chat` snapshot shape; alpha uses the `useChat` chat snapshot.
-The version differences are sealed in
+Exclusively supports the three current DSH release channels: **latest
+`0.1.2-rc.1`** and **new/next `0.1.2-rc.1`** (npm `latest` / `next` tags,
+rc channel), and **alpha `0.1.3-alpha.2`** (npm `alpha` tag). Older releases
+are intentionally out of scope — the version-compatibility layers for them
+have been removed (no `useSession`-carried chat adapter, no namespace probe,
+no `status`/`final` fallbacks). Both channels share ONE chat-node seat kit:
+`useChat` returns the chat target (`chat.legacy.turnEnds` is the turn
+closure), `useSession` only the window flags, and both register the
+chat-cell dictionaries under `chat`. The remaining differences — the
+alpha-only `loadImage` owner kit, the 0.1.3 user-bubble update (official
+`projectUserText` signature growth, `file` content blocks with generic-file
+cards) — are sealed in
 `src/client/snapshot-face.ts` (snapshot normalization),
 `src/client/registry.ts` (`compositeT` namespace fallback) and
 `src/client/UserNodeWrapper.tsx` (user-text + attachment kits); the runtime

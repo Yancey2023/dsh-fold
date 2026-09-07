@@ -61,9 +61,9 @@ export interface ToolCallOwnerProps {
 export interface ToolCallGroupViewProps {
   /** The tool-call node owned by this seat. */
   node: ChatNodeLike
-  /** Framework session selector hook (window flags; on rc also the chat). */
+  /** Framework session selector hook (window flags). */
   useSession?: SelectorHook
-  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  /** Chat-target selector hook (the transcript, on both supported channels). */
   useChat?: SelectorHook
   /** Child-slot dispatch face (declared via this entry's children table). */
   renderSlot: RenderSlot
@@ -466,7 +466,7 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
-  // Alpha 0.1.2's own compact-transcript turn folding is active for this
+  // Alpha channel's own compact-transcript turn folding is active for this
   // turn: yield the big fold entirely to the product (no double bars); the
   // small tool/think groups stay ours.
   const productFoldActive = props.turnProcess !== undefined

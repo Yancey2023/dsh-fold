@@ -1,8 +1,9 @@
 /**
  * Minimal, reversible accommodation for the "shadow and delegate" pattern.
  *
- * Problem (verified against DSH 0.1.1-rc.2 sources AND the shipped web
- * bundle): the keyed Chat slot `conversation.chat.node` supports cell
+ * Problem (verified against the DSH 0.1.2-rc.1 / 0.1.3-alpha.2 sources AND
+ * the shipped web bundle): the keyed Chat slot `conversation.chat.node`
+ * supports cell
  * shadowing by priority (lowest wins), but `SlotCore.register` forbids a
  * second entry from declaring `children` for a slot that is already declared
  * — and without that children table the shadowing entry receives no

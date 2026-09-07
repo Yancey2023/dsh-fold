@@ -26,7 +26,13 @@ const textBlock = (text) => ({ kind: 'text', text })
 
 function makeSession(order, nodes, turnEnds) {
   const map = new Map(nodes.map((n) => [n.key, n]))
-  return { chat: { order, nodes: { get: (k) => map.get(k) } }, ...(turnEnds ? { turnEnds } : {}) }
+  // The Chat target `useChat` returns on both supported channels; the
+  // turn-closure map lives at legacy.turnEnds.
+  return {
+    order,
+    nodes: { get: (k) => map.get(k) },
+    ...(turnEnds ? { legacy: { turnEnds } } : {}),
+  }
 }
 
 /** Flatten rendered JSON tree to text. */
@@ -39,8 +45,9 @@ function textOf(node) {
 
 function makeProps(snapshot, nodeKey) {
   return {
-    node: snapshot.chat.nodes.get(nodeKey),
-    useSession: (sel) => sel(snapshot),
+    node: snapshot.nodes.get(nodeKey),
+    useChat: (sel) => sel(snapshot),
+    useSession: (sel) => sel({ hasMore: false, loadingOlder: false }),
     openFile: () => {},
     loadImage: () => Promise.resolve(''),
     fileMentions: () => undefined,

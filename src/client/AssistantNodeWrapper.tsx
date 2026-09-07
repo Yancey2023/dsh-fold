@@ -40,9 +40,9 @@ export { setSlotsService } from './registry'
 export interface AssistantNodeWrapperProps {
   /** The assistant-step node owned by this seat. */
   node: ChatNodeLike
-  /** Framework session selector hook (window flags; on rc also the chat). */
+  /** Framework session selector hook (window flags). */
   useSession?: SelectorHook
-  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  /** Chat-target selector hook (the transcript, on both supported channels). */
   useChat?: SelectorHook
   /** Session id (big-fold state is keyed per session). */
   sessionId?: string
@@ -67,8 +67,9 @@ function renderOfficial(props: AssistantNodeWrapperProps): React.ReactElement | 
   const data = node.data as { blocks?: readonly AssistantBlockLike[] } | undefined
   const blocks = data?.blocks
   const filtered = Array.isArray(blocks) ? blocks.filter((b) => b.kind !== 'reasoning') : blocks
-  // The official view's copy lives in the host's live cell namespace
-  // (`chat` on alpha, `conversation` on rc) — hand it the composite instead
+  // The official view's copy lives in the host's live `chat` namespace
+  // (both channels register the chat-cell keys there; this seat only binds
+  // the conversation namespace) — hand it the composite instead
   // of this seat's own bound `t` so its keys actually translate.
   const forwardedBase = { ...props, t: compositeT(getChatT(), (typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined) }
   const forwarded = filtered === blocks ? forwardedBase : { ...forwardedBase, node: { ...node, data: { ...data, blocks: filtered } } }
@@ -85,13 +86,13 @@ export const AssistantNodeWrapper = React.memo(function AssistantNodeWrapper(pro
   const { node, useSession, sessionId } = props
   const seatT = (typeof props.t === 'function' ? props.t : undefined) as TranslateLike | undefined
   // The assistant seat binds the CONVERSATION namespace; stash the composite
-  // (chat-first on alpha, conversation otherwise) for group members that
-  // render product text (the official model-retry row).
+  // (chat-cell keys first, conversation/image labels as fallback) for group
+  // members that render product text (the official model-retry row).
   setConversationT(compositeT(getChatT(), seatT))
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
-  // Alpha 0.1.2's own compact-transcript turn folding is active for this
+  // The alpha channel's own compact-transcript turn folding is active for this
   // turn: yield the big fold entirely to the product (no double bars); the
   // small tool/think groups stay ours.
   const productFoldActive = props.turnProcess !== undefined

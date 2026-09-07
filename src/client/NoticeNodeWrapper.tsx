@@ -59,9 +59,9 @@ export const UNFOLDED_NOTICE_KINDS = new Set(['turn-error', 'turn-max-tokens', '
 export interface NoticeNodeWrapperProps {
   /** The node owned by this seat. */
   node: ChatNodeLike
-  /** Framework session selector hook (window flags; on rc also the chat). */
+  /** Framework session selector hook (window flags). */
   useSession?: SelectorHook
-  /** Chat-target selector hook (alpha 0.1.2+; absent on rc). */
+  /** Chat-target selector hook (the transcript, on both supported channels). */
   useChat?: SelectorHook
   /** Session id (big-fold state is keyed per session). */
   sessionId?: string
@@ -84,7 +84,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
-  // Alpha 0.1.2's own compact-transcript turn folding is active for this
+  // Alpha channel's own compact-transcript turn folding is active for this
   // turn: yield the big fold entirely to the product (no double bars); the
   // small inline folds stay ours.
   const productFoldActive = props.turnProcess !== undefined
@@ -132,7 +132,7 @@ export const NoticeNodeWrapper = React.memo(function NoticeNodeWrapper(props: No
   } else if (UNFOLDED_NOTICE_KINDS.has(node.kind)) {
     // Never folded: delegate straight to the official cell view (the same
     // delegation DelegatedNoticeItem uses), with the composite translate so
-    // alpha/rc dictionary placement both resolve.
+    // the chat-cell keys resolve on every supported channel.
     const official = officialNodeEntry(node.kind)
     const conversationT = compositeT(getChatT(), seatT)
     output = official !== undefined && official.component != null && conversationT !== undefined

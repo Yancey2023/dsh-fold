@@ -71,6 +71,12 @@ const fakeSlots = {
     registrations.push({ options, component })
     return () => {}
   },
+  inject(key, callback) {
+    // Like the live slot core: runs the contribution and returns the
+    // disposer that unregisters it.
+    const disposer = callback()
+    return typeof disposer === 'function' ? disposer : () => {}
+  },
 }
 const fakeLocale = {
   register(ns, dicts) {

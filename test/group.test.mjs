@@ -424,7 +424,7 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// ALPHA (0.1.2): the turn-process controller node is flow-TRANSPARENT.
+// Alpha channel: the turn-process controller node is flow-TRANSPARENT.
 // It sits between work in every closed turn; it must neither split a run,
 // nor count as a folded block, nor become the group leader.
 // ---------------------------------------------------------------------------
@@ -457,42 +457,54 @@ function snapshot(order, nodes) {
 }
 
 // ---------------------------------------------------------------------------
-// RC (0.1.1): assistant data has NO `status`; a step streams while its
-// durable `final` node is absent. isLiveWorkNode must treat that as running.
+// Current channels: assistant data carries `status` (running/settled/
+// interrupted) on both rc.1 and alpha.2 — isLiveWorkNode keys off it.
 // ---------------------------------------------------------------------------
 
-// rc-era streaming think: status undefined, final undefined -> live.
+// Streaming think row (status: running) -> live.
 {
   const node = {
     key: 'a1',
     kind: 'assistant-step',
     location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } },
-    data: { blocks: [think('streaming...')] },
+    data: { blocks: [think('streaming...')], status: 'running' },
   }
-  assert.equal(isLiveWorkNode(node), true, 'no status + no final = streaming (rc)')
+  assert.equal(isLiveWorkNode(node), true, 'status running = streaming')
 }
 
-// rc-era settled think: final present -> not live.
+// Settled think row -> not live.
 {
   const node = {
     key: 'a1',
     kind: 'assistant-step',
     location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } },
-    data: { blocks: [think('done')], final: {} },
+    data: { blocks: [think('done')], status: 'settled' },
   }
-  assert.equal(isLiveWorkNode(node), false, 'final present = settled (rc)')
+  assert.equal(isLiveWorkNode(node), false, 'status settled = settled')
 }
 
-// rc-era streamING text: still clears the folded bar.
+// Interrupted think row -> not live.
+{
+  const node = {
+    key: 'a1',
+    kind: 'assistant-step',
+    location: { kind: 'step', turn: { turn: 1 }, step: { step: 1 } },
+    data: { blocks: [think('cut off')], status: 'interrupted' },
+  }
+  assert.equal(isLiveWorkNode(node), false, 'status interrupted = settled')
+}
+
+// Assistant TEXT still clears the folded bar (a work node never stays live
+// once it carries text, even while running).
 {
   const s = snapshot(
     ['t1', 'aTxt'],
     [
       toolNode('t1', 1, settled('bash')),
-      { key: 'aTxt', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 2 } }, data: { blocks: [textBlock('写正文...')] } },
+      { key: 'aTxt', kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 }, step: { step: 2 } }, data: { blocks: [textBlock('写正文...')], status: 'running' } },
     ],
   )
-  assert.equal(latestWorkNode(s), undefined, 'rc streaming text clears the bar')
+  assert.equal(latestWorkNode(s), undefined, 'text-bearing assistant clears the bar')
 }
 
 console.log('group.test: all assertions passed')

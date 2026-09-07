@@ -260,7 +260,7 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
 }
 
 // ---------------------------------------------------------------------------
-// rc-era image path (no loadImage on the seat kit): a single
+// rc channel image path (no loadImage on the seat kit): a single
 // renderMessageImages call with the whole image list, no compact flag.
 // ---------------------------------------------------------------------------
 {
