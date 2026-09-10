@@ -65,6 +65,54 @@ const peers = Object.keys(manifest.peerDependencies ?? {})
 const forbiddenPeers = peers.filter((name) => CORE_RUNTIME.test(name))
 assert.deepEqual(forbiddenPeers, [], 'no core-runtime package may be a peer — the plugin must not bind to host internals')
 
+// The three npm channel versions the plugin must accept: the newest
+// `alpha` (0.1.5-alpha.2), `latest` (0.1.5-rc.1) and `next` (0.1.5-rc.2)
+// dist-tags. Every shell-owned peer range must cover all three.
+const SUPPORTED_CHANNEL_VERSIONS = ['0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2']
+
+// Minimal prerelease-aware semver comparison (numeric core, then dot-split
+// prerelease identifiers: numeric < alphanumeric; a shorter list sorts
+// before a longer one with the same prefix; a release sorts after any of
+// its prereleases). No semver dependency in the dev tree — this is enough
+// to decide the plugin's own `>=lo <hi` peer ranges.
+function compareVersions(a, b) {
+  const parse = (v) => {
+    const [core, ...rest] = v.split('-')
+    return { nums: core.split('.').map(Number), pre: rest.length > 0 ? rest.join('-').split('.') : [] }
+  }
+  const A = parse(a)
+  const B = parse(b)
+  for (let i = 0; i < 3; i += 1) {
+    if ((A.nums[i] ?? 0) !== (B.nums[i] ?? 0)) return (A.nums[i] ?? 0) - (B.nums[i] ?? 0)
+  }
+  if (A.pre.length === 0 && B.pre.length === 0) return 0
+  if (A.pre.length === 0) return 1
+  if (B.pre.length === 0) return -1
+  for (let i = 0; i < Math.max(A.pre.length, B.pre.length); i += 1) {
+    const pa = A.pre[i]
+    const pb = B.pre[i]
+    if (pa === undefined) return -1
+    if (pb === undefined) return 1
+    if (pa === pb) continue
+    const na = Number(pa)
+    const nb = Number(pb)
+    const aNum = Number.isInteger(na) && String(na) === pa
+    const bNum = Number.isInteger(nb) && String(nb) === pb
+    if (aNum && bNum) return na - nb
+    if (aNum) return -1
+    if (bNum) return 1
+    return pa < pb ? -1 : 1
+  }
+  return 0
+}
+
+/** Whether `version` satisfies the plugin's `>=lo <hi` peer range shape. */
+function peerRangeSatisfies(version, range) {
+  const m = /^>=([^\s]+) <([^\s]+)$/.exec(range)
+  if (m === null) throw new Error(`peer range "${range}" must use the plugin's ">=lo <hi" shape`)
+  return compareVersions(version, m[1]) >= 0 && compareVersions(version, m[2]) < 0
+}
+
 const ALLOWED_PEERS = new Set([
   '@deepseek-ai/dsh-attachment',
   '@deepseek-ai/dsh-client-ui-attachment',
@@ -76,7 +124,9 @@ for (const name of peers) {
   assert.ok(ALLOWED_PEERS.has(name), `unexpected peer "${name}" — only the shell-owned client packages may be peers`)
   if (name.startsWith('@deepseek-ai/')) {
     const range = manifest.peerDependencies[name]
-    assert.ok(/0\.1\.3-alpha\.2/.test(range), `peer ${name} range ${range} must cover the current host 0.1.3-alpha.2`)
+    for (const version of SUPPORTED_CHANNEL_VERSIONS) {
+      assert.ok(peerRangeSatisfies(version, range), `peer ${name} range ${range} must cover npm channel version ${version} (alpha / latest / next)`)
+    }
   }
 }
 

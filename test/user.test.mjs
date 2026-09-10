@@ -7,7 +7,7 @@
  *                          skillNames, @name decorates as a file chip,
  *                          exact session labels as session chips
  *   images + extras     -> official ImageGallery props + JsonBlock extras
- *   alpha attachments   -> per-image renderMessageImages (compact) + file card
+ *   file attachments    -> per-image renderMessageImages (compact) + file card
  *   toggle              -> expand removes the clamp, collapse restores it
  *   copy action         -> official writeClipboard path with check feedback
  *   time                -> product clock format, hidden when absent
@@ -224,7 +224,7 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
 }
 
 // ---------------------------------------------------------------------------
-// Alpha attachments (0.1.3 owner kit: loadImage present): one
+// File attachments (0.1.5 owner kit: loadImage present): one
 // renderMessageImages call per image (compact when the row holds >1
 // attachment) plus a generic-file card with extension + byte size.
 // ---------------------------------------------------------------------------
@@ -247,7 +247,7 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
   const names = findAll(json, byClass('dshUserFileName'))
   const metas = findAll(json, byClass('dshUserFileMeta'))
 
-  assert.equal(rmiNodes.length, 1, 'alpha renders one gallery call per image')
+  assert.equal(rmiNodes.length, 1, 'owner renders one gallery call per image')
   assert.equal(rmiNodes[0].props['data-count'], 1)
   assert.equal(rmiNodes[0].props['data-align'], 'end')
   assert.equal(rmiNodes[0].props['data-compact'], 'true', 'two attachments force compact tiles')
@@ -255,12 +255,14 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
   assert.equal(cards[0].props.title, 'report.pdf')
   assert.equal(textOf(names[0]), 'report.pdf')
   assert.equal(textOf(metas[0]), 'PDF 4.2KB')
-  assert.equal(findAll(json, (node) => node.props?.['data-document-icon'] !== undefined).length, 1)
+  const fileIcons = findAll(json, (node) => node.props?.['data-file-type-icon'] !== undefined)
+  assert.equal(fileIcons.length, 1, 'file card shows the official FileTypeIcon glyph (path-classified)')
+  assert.equal(fileIcons[0].props['data-path'], 'report.pdf')
   root.unmount()
 }
 
 // ---------------------------------------------------------------------------
-// rc channel image path (no loadImage on the seat kit): a single
+// No loadImage on the seat kit (defensive reverse path): a single
 // renderMessageImages call with the whole image list, no compact flag.
 // ---------------------------------------------------------------------------
 {
@@ -278,7 +280,7 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
   })
   const json = root.toJSON()
   const rmiNodes = findAll(json, (node) => node.props?.['data-rmi'] !== undefined)
-  assert.equal(rmiNodes.length, 1, 'rc renders one gallery call for all images')
+  assert.equal(rmiNodes.length, 1, 'no loadImage: one gallery call for all images')
   assert.equal(rmiNodes[0].props['data-count'], 2)
   assert.equal(rmiNodes[0].props['data-compact'], undefined)
   root.unmount()

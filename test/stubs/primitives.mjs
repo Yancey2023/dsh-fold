@@ -55,8 +55,14 @@ export function fileSizeText(bytes) {
   return `${gb < 10 ? gb.toFixed(1) : Math.round(gb)}GB`
 }
 
-export function DocumentFileIcon({ className }) {
-  return React.createElement('svg', { className, 'data-document-icon': 'true' })
+export function FileTypeIcon({ path, className }) {
+  return React.createElement('svg', { className, 'data-file-type-icon': 'true', 'data-path': path })
+}
+
+export function fileExtension(path) {
+  const dot = path.lastIndexOf('.')
+  if (dot <= 0 || dot === path.length - 1) return ''
+  return path.slice(dot + 1).toLowerCase()
 }
 
 export function JsonBlock({ label, payload }) {

@@ -130,8 +130,9 @@ export const CSS = `
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
   overflow:hidden;max-height:72px;
 }
-/* Attachment row (alpha 0.1.3+): image tiles handled by the official
-   gallery slot, generic-file cards by the replica below. */
+/* Attachment row (0.1.3+ content shape, still current on 0.1.5): image
+   tiles handled by the official gallery slot, generic-file cards by the
+   replica below. */
 .dshUserAttachmentRow{
   display:flex;flex-wrap:wrap;justify-content:flex-end;
   gap:8px;max-width:100%;

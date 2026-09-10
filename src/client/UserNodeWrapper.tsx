@@ -20,7 +20,8 @@
  * toggle, which is hidden (CSS) unless the text actually overflows 3 lines.
  * Copy uses the official writeClipboard primitive.
  *
- * Release seams (sealed here, verified against 0.1.2-rc.1 AND 0.1.3-alpha.2):
+ * Release seams (sealed here, verified against 0.1.5-alpha.2 / 0.1.5-rc.1 /
+ * 0.1.5-rc.2 — the newest npm `alpha` / `latest` / `next` tags):
  *
  *  - Text decoration uses the OFFICIAL `projectUserText` primitive. Its
  *    signature grew between releases — rc: `(text, sessionLabels)`, alpha:
@@ -31,19 +32,22 @@
  *    decorate only when the step's `skill-invocation` injections loaded that
  *    skill (the alpha product behavior). Both releases render plain runs as
  *    inline spans, so the 3-line clamp keeps working.
- *  - Image rendering: rc seats receive only `renderMessageImages` — one call
- *    with the whole image list. Alpha seats additionally receive `loadImage`
- *    (`typeof loadImage === 'function'` is the alpha marker) and the product
- *    renders an attachment row with one call per image (`compact` when more
- *    than one) plus generic-file cards (`file` content blocks are a
- *    ​0.1.3-alpha.2 addition). DocumentFileIcon / fileSizeText exist only on
- *    alpha hosts; they are only touched on that path and guarded by typeof.
+ *  - Image rendering: the 0.1.5 seat kit always provides `renderMessageImages`
+ *    (one call with the whole image list on the rc channel; alpha 0.1.3+ seats
+ *    additionally receive `loadImage` — `typeof loadImage === 'function'` is
+ *    the alpha marker — and the product renders an attachment row with one
+ *    call per image (`compact` when more than one) plus generic-file cards
+ *    (`file` content blocks are a 0.1.3-alpha.2 addition, still present on
+ *    0.1.5). FileTypeIcon / fileExtension / fileSizeText exist on every
+ *    supported 0.1.5 release; they are only touched on that path and guarded
+ *    by typeof.
  */
 
 import * as React from 'react'
 import {
-  DocumentFileIcon,
+  fileExtension,
   fileSizeText,
+  FileTypeIcon,
   IconCheckOutline16,
   IconChevronDownOutline14,
   IconChevronUpOutline14,
@@ -150,8 +154,11 @@ function contentParts(content: readonly unknown[]): {
   return { text: texts.join(''), attachments, images, rest }
 }
 
-/** Uppercased extension for the generic-file card meta (product derivation). */
+/** Uppercased extension for the generic-file card meta. The official
+ * `fileExtension` primitive (every supported 0.1.5 release) is preferred;
+ * the local derivation is a defensive fallback. */
 function extensionOf(name: string): string {
+  if (typeof fileExtension === 'function') return fileExtension(name).toUpperCase().slice(0, 8)
   const dot = name.lastIndexOf('.')
   if (dot <= 0 || dot === name.length - 1) return ''
   return name.slice(dot + 1).toUpperCase().slice(0, 8)
@@ -227,15 +234,17 @@ function CopyAction({ text, t }: { text: string; t: Translate }): React.ReactEle
   )
 }
 
-/** One generic-file card (alpha attachment row). The official alpha-only
- * DocumentFileIcon / fileSizeText primitives are used when present; rc hosts
- * never take this path (no `file` blocks exist in rc session data). */
+/** One generic-file card (attachment row). The official 0.1.5
+ * FileTypeIcon / fileExtension / fileSizeText primitives are used (the same
+ * composition the product's 0.1.5 file card uses: type glyph by path +
+ * extension · byte size); each is guarded by typeof so an absent primitive
+ * degrades instead of crashing. */
 function FileCard({ file }: { file: UserFileAttachmentLike }): React.ReactElement {
   const meta = [extensionOf(file.name), fileSize(file.bytes)].filter(Boolean).join(' ')
   return React.createElement(
     'span',
     { className: 'dshUserFileCard', title: file.name },
-    typeof DocumentFileIcon === 'function' ? React.createElement(DocumentFileIcon, { className: 'dshUserFileIcon' }) : null,
+    typeof FileTypeIcon === 'function' ? React.createElement(FileTypeIcon, { path: file.name, className: 'dshUserFileIcon' }) : null,
     React.createElement(
       'span',
       { className: 'dshUserFileContent' },
@@ -279,9 +288,9 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
   const rawContent = data.content
   const content = Array.isArray(rawContent) ? rawContent : typeof rawContent === 'string' ? [{ type: 'text', text: rawContent }] : []
   const { text, attachments, images, rest } = contentParts(content)
-  // Alpha seats receive `loadImage` on their owner kit; rc seats do not. On
-  // the rc channel path a `file` block (a 0.1.3 content shape the rc data model
-  // cannot produce) still surfaces as a JsonBlock extra instead of dropping.
+  // The every-0.1.5 seat kit provides `loadImage`. On a hypothetical release
+  // without it, a `file` block still surfaces as a JsonBlock extra instead
+  // of dropping.
   const alphaKit = typeof loadImage === 'function'
   const extraRest = alphaKit ? rest : [...rest, ...attachments.filter((a): a is { type: 'file'; file: UserFileAttachmentLike } => a.type === 'file')]
   const showBubble = text !== '' || extraRest.length > 0
@@ -296,7 +305,7 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
         // rc channel owner: one gallery call with the whole image list.
         return renderMessageImages({ images, align: 'end' })
       }
-      // alpha 0.1.3 owner: one call per image (compact when the attachment
+      // 0.1.5 owner: one call per image (compact when the attachment
       // row holds more than one), plus generic-file cards interleaved.
       const compact = attachments.length > 1
       return React.createElement(

@@ -1,8 +1,9 @@
 /**
  * Minimal type declarations for the DSH packages this plugin imports.
  *
- * The REAL contracts live in the installed DSH (verified against 0.1.2-rc.1
- * AND 0.1.3-alpha.2; see README's "Seam and data model" section). These
+ * The REAL contracts live in the installed DSH (verified against the newest
+ * npm channel releases: `alpha` → 0.1.5-alpha.2, `latest` → 0.1.5-rc.1,
+ * `next` → 0.1.5-rc.2; see README's "Seam and data model" section). These
  * shims keep the repo typecheckable without a full
  * DSH checkout; the runtime contract is enforced by the DSH page itself
  * (fail-closed guards in slots-core-overlay.ts). The remaining per-channel
@@ -56,11 +57,10 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
    * Display projection of reference forms in sent user text (the OFFICIAL
    * primitive, exported by every supported release).
    *
-   * Signature history: rc `(text, sessionLabels)`; alpha 0.1.3
-   * `(text, sessionLabels, slashNames, slashKind)` — the plugin always calls
-   * the 4-arg form; rc ignores the trailing arguments (every `/name`/
-   * `@name` token decorates), alpha gates `/name` tokens on `slashNames`
-   * exactly like the host product.
+   * Signature: `(text, sessionLabels, slashNames?, slashKind?)` — the plugin
+   * always calls the 4-arg form; older rc hosts ignore the trailing
+   * arguments (every `/name`/`@name` token decorates), the 0.1.5 channel
+   * gates `/name` tokens on `slashNames` exactly like the host product.
    */
   export function projectUserText(
     text: string,
@@ -68,10 +68,16 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     slashNames?: readonly string[],
     slashKind?: 'skill' | 'command',
   ): ReactNode
-  /** Alpha 0.1.3 add: compact byte text (`312B`, `4.2KB`, …). */
+  /** Compact byte text (`312B`, `4.2KB`, …). */
   export function fileSizeText(bytes: number): string
-  /** Alpha 0.1.3 add: decorative document glyph for generic-file cards. */
-  export const DocumentFileIcon: FC<{ className?: string }>
+  /**
+   * Decorative file-type glyph for generic-file cards (0.1.5 add; replaces
+   * the 0.1.3-era `DocumentFileIcon`, which 0.1.5 removed). The product's
+   * own file card passes the file path so the glyph is classified from it.
+   */
+  export const FileTypeIcon: FC<{ path: string; className?: string; size?: number }>
+  /** Final suffix of a file path without changing its case (0.1.5 add). */
+  export function fileExtension(path: string): string
   export const DisclosureRow: FC<{
     icon?: ReactNode
     title?: ReactNode
@@ -136,7 +142,7 @@ declare module '@deepseek-ai/dsh-attachment' {
     url?: string
     name?: string
   }
-  /** Alpha 0.1.3 add: durable verbatim-file reference (passed through only). */
+  /** Durable verbatim-file reference (passed through only). */
   export interface FileAttachmentRef {
     attachmentId: string
     name: string

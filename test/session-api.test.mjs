@@ -1,6 +1,6 @@
 /**
  * Regression tests against the CURRENT DSH Session API
- * (`@deepseek-ai/dsh-session@0.1.3-alpha.2`, the version the harness ships):
+ * (`@deepseek-ai/dsh-session@0.1.5-rc.2`, the newest npm `next` release):
  *
  * Test 1  — the removed `session.events` property is ABSENT on the current
  *           Session; the fold pipeline runs entirely off the new API surface

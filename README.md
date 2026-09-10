@@ -95,8 +95,10 @@ official primitives).
   product's `UserStyleBubble` built from **official primitives** (the
   official `projectUserText` — `/name`/`@name`/session ref chips with the
   exact per-release gating of the host bubble —, `JsonBlock` extras, the
-  official attachment row: slot-backed `ImageGallery` calls on rc, per-image
-  compact calls plus generic-file cards on alpha 0.1.3, the product time +
+  official attachment row: slot-backed `ImageGallery` calls, per-image
+  compact calls plus generic-file cards (`FileTypeIcon`/`fileExtension`/
+  `fileSizeText`, the exact 0.1.5 composition the product's own file card
+  uses), the product time +
   copy actions with the official `writeClipboard`) — replication, not
   delegation, because
   Chromium's line-clamp does not clamp content inside a nested flex
@@ -119,18 +121,29 @@ official primitives).
 
 ## DSH version
 
-Exclusively supports the current DSH release channel: **alpha
-`0.1.3-alpha.2`** (npm `alpha` tag; the version the harness ships today).
-Older releases are intentionally out of scope — the version-compatibility
-layers for them have been removed (no `useSession`-carried chat adapter, no
-namespace probe, no `status`/`final` fallbacks, no plugin-owned turn-level
-big fold — that fold is product-owned). The channel shares ONE chat-node
-seat kit: `useChat` returns the chat target (`chat.legacy.turnEnds` is the
-turn closure), `useSession` only the window flags, and the host registers
-the chat-cell dictionaries under `chat`. The remaining channel details — the
-`loadImage` owner kit, the 0.1.3 user-bubble update (official
-`projectUserText` signature growth, `file` content blocks with generic-file
-cards) — are sealed in
+Exclusively supports the current DSH release train — **`0.1.5`** — across
+all three npm channels at once:
+
+| npm tag  | newest release | peer range coverage |
+| -------- | -------------- | ------------------- |
+| `alpha`  | `0.1.5-alpha.2` | `>=0.1.5-alpha.2 <0.1.6` |
+| `latest` | `0.1.5-rc.1`    | `>=0.1.5-alpha.2 <0.1.6` |
+| `next`   | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6` |
+
+All four shell-owned peer packages (`dsh-client-ui-slots`,
+`dsh-client-ui-primitives`, `dsh-client-ui-attachment`, `dsh-attachment`)
+accept the same range, so the plugin resolves against whatever channel the
+host ships. Older releases are intentionally out of scope — the
+version-compatibility layers for them have been removed (no
+`useSession`-carried chat adapter, no namespace probe, no `status`/`final`
+fallbacks, no plugin-owned turn-level big fold — that fold is
+product-owned). The train shares ONE chat-node seat kit: `useChat` returns
+the chat target (`chat.legacy.turnEnds` is the turn closure), `useSession`
+only the window flags, and the host registers the chat-cell dictionaries
+under `chat`. The remaining channel details — the `loadImage` owner kit,
+the 0.1.5 user-bubble update (official `projectUserText` signature,
+`file` content blocks with generic-file cards, the 0.1.5 `FileTypeIcon` /
+`fileExtension` file-card primitives) — are sealed in
 `src/client/snapshot-face.ts` (snapshot normalization),
 `src/client/registry.ts` (`compositeT` namespace fallback) and
 `src/client/UserNodeWrapper.tsx` (user-text + attachment kits); the runtime

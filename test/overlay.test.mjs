@@ -1,6 +1,6 @@
 /**
  * Behavioral test of the slots-core overlay against the REAL
- * `@deepseek-ai/dsh-client-ui-slots` package (0.1.3-alpha.2, the current
+ * `@deepseek-ai/dsh-client-ui-slots` package (0.1.5-rc.2, the current
 devDependency) — in BOTH its
  * published (unminified) form and a minified bundle mirroring the shipped
  * web frontend (the live page's SlotCore is minified; the overlay must not

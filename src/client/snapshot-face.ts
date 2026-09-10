@@ -1,8 +1,8 @@
 /**
  * Unified conversation-snapshot face across the supported DSH channels.
  *
- * Supported releases (npm `latest`/`next` → 0.1.2-rc.1, npm `alpha` →
- * 0.1.3-alpha.2) share ONE chat-node seat kit: the renderer's standard
+ * Supported releases (npm `alpha` → 0.1.5-alpha.2, `latest` → 0.1.5-rc.1,
+ * `next` → 0.1.5-rc.2) share ONE chat-node seat kit: the renderer's standard
  * session kit hands every `conversation.chat.node` cell TWO selector hooks
  * (the product's own turn-tail cell consumes `useChat` from its props on
  * both channels, so it is always provided):
@@ -16,8 +16,8 @@
  * This module normalizes the chat target onto one stable `SnapshotFace`
  * ({chat, hasMore, loadingOlder}), so the fold computations (group / turn /
  * live) stay channel-agnostic. The only remaining per-channel difference —
- * the alpha-only `loadImage` owner kit and 0.1.3 file-attachment content —
- * is handled in the user wrapper, not here.
+ * the alpha-line `loadImage` owner kit and the 0.1.5 file-attachment content
+ * — is handled in the user wrapper, not here.
  *
  * Reference stability: every face member is compared by reference through
  * the selector `eq` parameter, so the derived values stay memoizable with
