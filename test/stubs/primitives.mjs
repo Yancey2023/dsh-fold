@@ -24,7 +24,10 @@ export function DisclosureRow({ icon, title, open, expandable, onToggle, expandO
   return React.createElement('div', { 'data-open': open || undefined }, row, open ? children : null)
 }
 
-export function projectUserText(text, sessionLabels = [], slashNames = [], slashKind = 'skill') {
+// Mirrors the 0.1.6-alpha.1 primitive: the optional fifth `references`
+// argument turns `@file` chips and skill `/name` chips into clickable buttons
+// (session and command chips stay inert). Older channels ignore the argument.
+export function projectUserText(text, sessionLabels = [], slashNames = [], slashKind = 'skill', references) {
   const re = /(^|\s)(\/[\w-]+(?=\s|$)|@[^\s]+)/gu
   const parts = []
   let cursor = 0
@@ -37,7 +40,19 @@ export function projectUserText(text, sessionLabels = [], slashNames = [], slash
     if (tokenStart > cursor) parts.push(React.createElement('span', { key: `t${cursor}` }, text.slice(cursor, tokenStart)))
     const name = label.slice(1)
     const chipKind = isSlash ? slashKind : sessionLabels.includes(name) ? 'session' : 'file'
-    parts.push(React.createElement('span', { key: `r${tokenStart}`, 'data-ref-chip': chipKind }, isSlash ? label : name))
+    const contents = isSlash ? label : name
+    const open = references === undefined
+      ? undefined
+      : chipKind === 'file'
+        ? () => references.openFile(name)
+        : chipKind === 'skill'
+          ? () => references.openSkill(label.slice(1))
+          : undefined
+    parts.push(
+      open === undefined
+        ? React.createElement('span', { key: `r${tokenStart}`, 'data-ref-chip': chipKind }, contents)
+        : React.createElement('button', { key: `r${tokenStart}`, type: 'button', 'data-ref-chip': chipKind, onClick: open }, contents),
+    )
     cursor = tokenStart + label.length
   }
   if (parts.length === 0) return React.createElement('span', null, text)

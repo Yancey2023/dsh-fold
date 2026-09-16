@@ -1,7 +1,7 @@
 /**
  * Integration test: the complete slot pipeline as the page runs it.
  *
- *   real SlotCore (0.1.5-rc.2) + overlay
+ *   real SlotCore (0.1.6-alpha.1) + overlay
  *     → product registers tool-call cell (official tree) + bash toolview
  *     → plugin registers shadow (priority -100, children tool.call.toolview)
  *     → emulated keyed dispatch: winner renders ToolCallGroupView with a

@@ -65,10 +65,11 @@ const peers = Object.keys(manifest.peerDependencies ?? {})
 const forbiddenPeers = peers.filter((name) => CORE_RUNTIME.test(name))
 assert.deepEqual(forbiddenPeers, [], 'no core-runtime package may be a peer — the plugin must not bind to host internals')
 
-// The three npm channel versions the plugin must accept: the newest
-// `alpha` (0.1.5-alpha.2), `latest` (0.1.5-rc.1) and `next` (0.1.5-rc.2)
-// dist-tags. Every shell-owned peer range must cover all three.
-const SUPPORTED_CHANNEL_VERSIONS = ['0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2']
+// The npm channel versions the plugin must accept: the newest `alpha`
+// (0.1.6-alpha.1), `latest` (0.1.5-rc.1) and `next` (0.1.5-rc.2) dist-tags,
+// plus the previous alpha (0.1.5-alpha.2) the range still admits. Every
+// shell-owned peer range must cover all of them.
+const SUPPORTED_CHANNEL_VERSIONS = ['0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2', '0.1.6-alpha.1']
 
 // Minimal prerelease-aware semver comparison (numeric core, then dot-split
 // prerelease identifiers: numeric < alphanumeric; a shorter list sorts
@@ -106,11 +107,18 @@ function compareVersions(a, b) {
   return 0
 }
 
-/** Whether `version` satisfies the plugin's `>=lo <hi` peer range shape. */
+/**
+ * Whether `version` satisfies the plugin's peer range shape: one or more
+ * `>=lo <hi` legs joined by `||` (a channel spanning two release lines needs
+ * the disjunction — npm semver excludes a prerelease from a range whose legs
+ * only carry a different major.minor.patch tuple).
+ */
 function peerRangeSatisfies(version, range) {
-  const m = /^>=([^\s]+) <([^\s]+)$/.exec(range)
-  if (m === null) throw new Error(`peer range "${range}" must use the plugin's ">=lo <hi" shape`)
-  return compareVersions(version, m[1]) >= 0 && compareVersions(version, m[2]) < 0
+  return range.split('||').some((leg) => {
+    const m = /^\s*>=([^\s]+) <([^\s]+)\s*$/.exec(leg)
+    if (m === null) throw new Error(`peer range "${range}" must use the plugin's ">=lo <hi" (optionally "||"-joined) shape`)
+    return compareVersions(version, m[1]) >= 0 && compareVersions(version, m[2]) < 0
+  })
 }
 
 const ALLOWED_PEERS = new Set([

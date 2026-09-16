@@ -21,25 +21,30 @@
  * Copy uses the official writeClipboard primitive.
  *
  * Release seams (sealed here, verified against 0.1.5-alpha.2 / 0.1.5-rc.1 /
- * 0.1.5-rc.2 — the newest npm `alpha` / `latest` / `next` tags):
+ * 0.1.5-rc.2 / 0.1.6-alpha.1 — the newest npm `alpha` / `latest` / `next`
+ * tags):
  *
  *  - Text decoration uses the OFFICIAL `projectUserText` primitive. Its
  *    signature grew between releases — rc: `(text, sessionLabels)`, alpha:
- *    `(text, sessionLabels, slashNames, slashKind)` — so this wrapper always
- *    forwards `referenceLabels` / `skillNames` from the node data. On an rc
- *    host the extra arguments are ignored (every `/name` and `@name` token
- *    decorates, the rc product behavior); on an alpha host `/name` tokens
- *    decorate only when the step's `skill-invocation` injections loaded that
- *    skill (the alpha product behavior). Both releases render plain runs as
- *    inline spans, so the 3-line clamp keeps working.
+ *    `(text, sessionLabels, slashNames, slashKind)`, 0.1.6-alpha.1:
+ *    `(text, sessionLabels, slashNames, slashKind, references)` — so this
+ *    wrapper always forwards `referenceLabels` / `skillNames` from the node
+ *    data AND the seat's `openFile` / `openSkill` actions. On an rc host the
+ *    extra arguments are ignored (every `/name` and `@name` token decorates,
+ *    the rc product behavior); on an alpha host `/name` tokens decorate only
+ *    when the step's `skill-invocation` injections loaded that skill (the
+ *    alpha product behavior); on 0.1.6-alpha.1 `@file` and skill `/name` chips
+ *    become clickable buttons invoking those actions (the official
+ *    UserMessageNodeView passes the same `references`). Every release renders
+ *    plain runs as inline spans, so the 3-line clamp keeps working.
  *  - Image rendering: the 0.1.5 seat kit always provides `renderMessageImages`
  *    (one call with the whole image list on the rc channel; alpha 0.1.3+ seats
  *    additionally receive `loadImage` — `typeof loadImage === 'function'` is
  *    the alpha marker — and the product renders an attachment row with one
  *    call per image (`compact` when more than one) plus generic-file cards
  *    (`file` content blocks are a 0.1.3-alpha.2 addition, still present on
- *    0.1.5). FileTypeIcon / fileExtension / fileSizeText exist on every
- *    supported 0.1.5 release; they are only touched on that path and guarded
+ *    0.1.5/0.1.6). FileTypeIcon / fileExtension / fileSizeText exist on every
+ *    supported release; they are only touched on that path and guarded
  *    by typeof.
  */
 
@@ -108,6 +113,10 @@ export interface UserNodeWrapperProps {
   loadImage?: (attachment: ImageAttachmentRef) => Promise<string>
   /** Render the image gallery through the product's slot (both releases). */
   renderMessageImages?: RenderMessageImages
+  /** Open a Tool argument path / `@file` mention (seat owner currency). */
+  openFile?: (path: string, options?: unknown) => void
+  /** Open the source of a skill referenced by a `/name` mention (0.1.6-alpha.1). */
+  openSkill?: (name: string) => void
   /** Conversation-namespace translate (entry locale `conversation`). */
   t?: (key: string, params?: Record<string, unknown>) => string
   /** Session id (big-fold state is keyed per session; auto-load scope). */
@@ -256,7 +265,7 @@ function FileCard({ file }: { file: UserFileAttachmentLike }): React.ReactElemen
 
 /** The user seat: product bubble replica + 3-line clamp + fold toggle. */
 export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNodeWrapperProps): React.ReactElement | null {
-  const { node, loadImage, renderMessageImages, t, sessionId } = props
+  const { node, loadImage, renderMessageImages, openFile, openSkill, t, sessionId } = props
   const seatT = typeof t === 'function' ? t : undefined
   // The user seat binds the CONVERSATION namespace (product keys). On alpha
   // the cell dictionary moved to `chat` — the composite resolves chat-first
@@ -297,6 +306,18 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
   const toolT = getGroupT() ?? translate
   const labels = imageLabels(translate)
   const showToggle = expanded || overflowing
+  // 0.1.6-alpha.1 grew `projectUserText` with the optional `references`
+  // actions: `@file` and skill `/name` chips become buttons that open the
+  // file / skill source (the official UserMessageNodeView forwards the same
+  // `openFile` / `openSkill` seat actions). The 0.1.5 channels ignore the
+  // argument and keep inert chips, so one call site covers every release; the
+  // no-op `openSkill` guards a host that supplies `openFile` alone.
+  const references = typeof openFile === 'function'
+    ? {
+        openFile: openFile as (path: string) => void,
+        openSkill: typeof openSkill === 'function' ? (openSkill as (name: string) => void) : () => {},
+      }
+    : undefined
 
   const renderAttachments = (): React.ReactNode => {
     if (attachments.length === 0) return null
@@ -346,7 +367,7 @@ export const UserNodeWrapper = React.memo(function UserNodeWrapper(props: UserNo
               'div',
               { ref: clampRef, className: 'dshUserBubbleClamp', 'data-clamped': expanded ? undefined : '' },
               text !== ''
-                ? projectUserText(text, data.referenceLabels ?? [], data.skillNames ?? [], 'skill')
+                ? projectUserText(text, data.referenceLabels ?? [], data.skillNames ?? [], 'skill', references)
                 : null,
               ...extraRest.map((block, index) =>
                 React.createElement(JsonBlock, {

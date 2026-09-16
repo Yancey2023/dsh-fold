@@ -4,10 +4,10 @@ DSH `0.1.1-rc.2` / `0.1.2-alpha.1` · package `@deepseek-ai/dsh-client-ui-slots`
 
 > **Current target**: the runtime overlay that ships this patch
 > (`src/client/slots-core-overlay.ts`) is verified against the newest npm
-> channel releases — `alpha` `0.1.5-alpha.2`, `latest` `0.1.5-rc.1`,
-> `next` `0.1.5-rc.2` — whose `SlotCore` runtime is unchanged from the
-> version documented below (only a type-level comment/empty-interface
-> addition). The source-level patch below is the historical record.
+> channel releases — `alpha` `0.1.6-alpha.1`, `latest` `0.1.5-rc.1`,
+> `next` `0.1.5-rc.2` — whose `SlotCore` runtime is byte-identical to the
+> 0.1.5 one (only `package.json`/README changed between `0.1.5-rc.2` and
+> `0.1.6-alpha.1`). The source-level patch below is the historical record.
 
 ## Why
 

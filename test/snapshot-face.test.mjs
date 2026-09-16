@@ -1,7 +1,7 @@
 /**
  * Unit tests for the snapshot-face adapter — the seal between the fold
  * computations and the chat-node seat kit shared by the supported channels
- * (npm `alpha` → 0.1.5-alpha.2, `latest` → 0.1.5-rc.1, `next` → 0.1.5-rc.2):
+ * (npm `alpha` → 0.1.6-alpha.1, `latest` → 0.1.5-rc.1, `next` → 0.1.5-rc.2):
  *
  *  - `useChat` returns the Chat target directly
  *    (`{order, nodes, legacy: {turnEnds}}`);

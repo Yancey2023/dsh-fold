@@ -94,11 +94,13 @@ official primitives).
   (verified in headless Chromium). The bubble is a faithful replica of the
   product's `UserStyleBubble` built from **official primitives** (the
   official `projectUserText` — `/name`/`@name`/session ref chips with the
-  exact per-release gating of the host bubble —, `JsonBlock` extras, the
+  exact per-release gating of the host bubble, clickable `@file` / skill
+  chips on 0.1.6-alpha.1 via the seat `openFile` / `openSkill` actions —,
+  `JsonBlock` extras, the
   official attachment row: slot-backed `ImageGallery` calls, per-image
   compact calls plus generic-file cards (`FileTypeIcon`/`fileExtension`/
-  `fileSizeText`, the exact 0.1.5 composition the product's own file card
-  uses), the product time +
+  `fileSizeText`, the exact 0.1.5/0.1.6 composition the product's own file
+  card uses), the product time +
   copy actions with the official `writeClipboard`) — replication, not
   delegation, because
   Chromium's line-clamp does not clamp content inside a nested flex
@@ -121,32 +123,39 @@ official primitives).
 
 ## DSH version
 
-Exclusively supports the current DSH release train — **`0.1.5`** — across
-all three npm channels at once:
+Supports the current DSH release train — **`0.1.5` / `0.1.6`** — across all
+three npm channels at once:
 
 | npm tag  | newest release | peer range coverage |
 | -------- | -------------- | ------------------- |
-| `alpha`  | `0.1.5-alpha.2` | `>=0.1.5-alpha.2 <0.1.6` |
-| `latest` | `0.1.5-rc.1`    | `>=0.1.5-alpha.2 <0.1.6` |
-| `next`   | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6` |
+| `alpha`  | `0.1.6-alpha.1` | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
+| `latest` | `0.1.5-rc.1`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
+| `next`   | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
 
-All four shell-owned peer packages (`dsh-client-ui-slots`,
-`dsh-client-ui-primitives`, `dsh-client-ui-attachment`, `dsh-attachment`)
-accept the same range, so the plugin resolves against whatever channel the
-host ships. Older releases are intentionally out of scope — the
-version-compatibility layers for them have been removed (no
-`useSession`-carried chat adapter, no namespace probe, no `status`/`final`
-fallbacks, no plugin-owned turn-level big fold — that fold is
+The two-leg range is deliberate: npm semver excludes a prerelease from a
+range whose legs only carry a *different* `major.minor.patch` tuple, so the
+`0.1.6` alpha needs its own leg (and the first leg keeps the `0.1.5` channel
+releases, including the previous `0.1.5-alpha.2`). All four shell-owned peer
+packages (`dsh-client-ui-slots`, `dsh-client-ui-primitives`,
+`dsh-client-ui-attachment`, `dsh-attachment`) accept the same range, so the
+plugin resolves against whatever channel the host ships. Older releases are
+intentionally out of scope — the version-compatibility layers for them have
+been removed (no `useSession`-carried chat adapter, no namespace probe, no
+`status`/`final` fallbacks, no plugin-owned turn-level big fold — that fold is
 product-owned). The train shares ONE chat-node seat kit: `useChat` returns
 the chat target (`chat.legacy.turnEnds` is the turn closure), `useSession`
 only the window flags, and the host registers the chat-cell dictionaries
-under `chat`. The remaining channel details — the `loadImage` owner kit,
-the 0.1.5 user-bubble update (official `projectUserText` signature,
-`file` content blocks with generic-file cards, the 0.1.5 `FileTypeIcon` /
-`fileExtension` file-card primitives) — are sealed in
+under `chat`. The remaining channel details — the `loadImage` owner kit, the
+0.1.5 user-bubble update (official `projectUserText` signature, `file`
+content blocks with generic-file cards, the `FileTypeIcon` / `fileExtension`
+file-card primitives), and the 0.1.6-alpha.1 additions (the optional
+`projectUserText` `references` actions that make `@file` / skill `/name`
+chips clickable, and the `tool.call.toolview` owner's `loadImage` currency
+forwarded by the tool-group renderer) — are sealed in
 `src/client/snapshot-face.ts` (snapshot normalization),
-`src/client/registry.ts` (`compositeT` namespace fallback) and
-`src/client/UserNodeWrapper.tsx` (user-text + attachment kits); the runtime
+`src/client/registry.ts` (`compositeT` namespace fallback),
+`src/client/UserNodeWrapper.tsx` (user-text + attachment kits) and
+`src/client/ToolCallGroupView.tsx` (tool owner currency); the runtime
 overlay validates the live SlotCore shape and fails closed (plugin stays
 inert) if the relevant internals change.
 

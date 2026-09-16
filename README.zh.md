@@ -18,19 +18,22 @@
 - **折叠条文案**：折叠条显示 `N 个块已被折叠`——N 为折叠块数（工具调用 + 随组折叠的 Think 行；block 内部的 subcall 不重复计数）。运行中左侧显示 `正在运行 <工具>`。
 - **折叠条显示"当前对话最新状态"**：折叠条左侧显示当前对话**此时此刻正在做什么**——全局最新的活动块（不是组内标签）：流式 Think 行显示 `[Think] · <最新行>`；工作中的工具调用显示其真实行（terminal 调用为 `[icon] Bash · <命令描述>`，以及 `Read · <路径>`、`Search · <查询>`、`ask_user_question · <问题>`……即产品 `toolRowModel` 的逐字复刻）。调用执行中，正在跑的调用即"最新"；调用结束、模型再次思考时，Think 行接替显示；对话空闲时左侧留空。活动块**仅在折叠时**显示——展开后细节就在下方，折叠条左侧置空；真正承载该活动节点的折叠条额外带产品同款扫光动画。
 - **非文本块全部折叠（诊断除外）**：自动上下文压缩（`compaction`）、上下文注入（`context`）、手动压缩（`manual-compaction`）、用户命令如 `/permission`（`command`）、未知面（`unknown`）与 workflow 运行（`workflow-run`）都与其他工作块一样折叠——并入相邻工具/Think 组，或各自折成自己的 `1 个块已被折叠` 条（可展开）。只有三类**诊断**——`model-retry`（已重试模型请求）、`turn-error`（本轮运行失败）、`turn-max-tokens`（达到输出上限）——**永不折叠**：无条件渲染官方 cell 视图，始终可见。纯文本（用户/steering 消息、assistant 正文、总结及其复制/操作行）同样保持可见。
-- **用户输入**：文本超过 3 行的用户消息被钳制到 3 行，气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。钳制发生在**无 padding 的内层盒**上（`max-height: 72px` = 恰好 3 × 24px 行高）：任何浏览器都精确渲染 3 行并保留气泡底部空隙——旧式 line-clamp 行为（会露出半行第 4 行并吃掉底部 padding）被 max-height 硬切掉（headless Chromium 实证）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（官方 `projectUserText`——`/name`/`@name`/session ref chip 与宿主气泡同款的按版本门控；`JsonBlock` 附加块；官方附件行——逐图 compact 的 slot 分发调用加通用文件卡片，`FileTypeIcon`/`fileExtension`/`fileSizeText` 与 0.1.5 产品文件卡片完全同款；产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）。短消息原样渲染（clamp 无效果、按钮隐藏）。
+- **用户输入**：文本超过 3 行的用户消息被钳制到 3 行，气泡下方出现 `展开` 按钮（仅当文本确实溢出时显示，用 ResizeObserver 实测）。钳制发生在**无 padding 的内层盒**上（`max-height: 72px` = 恰好 3 × 24px 行高）：任何浏览器都精确渲染 3 行并保留气泡底部空隙——旧式 line-clamp 行为（会露出半行第 4 行并吃掉底部 padding）被 max-height 硬切掉（headless Chromium 实证）。气泡是对产品 `UserStyleBubble` 的忠实复刻，全部由**官方 primitives** 构建（官方 `projectUserText`——`/name`/`@name`/session ref chip 与宿主气泡同款的按版本门控，0.1.6-alpha.1 上 `@file`/技能 chip 经 seat 的 `openFile`/`openSkill` 变为可点击；`JsonBlock` 附加块；官方附件行——逐图 compact 的 slot 分发调用加通用文件卡片，`FileTypeIcon`/`fileExtension`/`fileSizeText` 与 0.1.5/0.1.6 产品文件卡片完全同款；产品同款时间 + 复制按钮并用官方 `writeClipboard`）——是复刻而非委托，因为 Chromium 的 line-clamp 无法穿透嵌套 flex 容器（官方行是 `display:flex`，已用 headless Chromium 实证）。短消息原样渲染（clamp 无效果、按钮隐藏）。
 - **滑到顶部自动加载更早（连续）**：滚动到对话最顶部且存在更早历史时自动拉取下一页（`loadOlder`），无需点击按钮；产品的"加载更早"按钮保留作手动兜底。只要用户**继续停在顶部**且 `hasMore` 仍为真，就会一页接一页自动加载，直到历史耗尽或用户滚离顶部（每次加载完成后用刷新后的快照重新武装）。滚动容器通过产品自身的 `scrollerOf` 契约（`[data-conversation-scroll]`）解析，动作走会话作用域的官方 `conversation.loadOlder()`；阈值、`hasMore`、`loadingOlder`、in-flight pump 等守卫防止重复或滚动中途误触发。这是插件唯一一处行为性 DOM 读取（被动 scroll 监听），不做任何修补或改样式。
 
 ## DSH 版本
 
-仅支持 DSH 当前发布序列 —— **`0.1.5`** —— 三个 npm 通道同时覆盖：
+支持 DSH 当前发布序列 —— **`0.1.5` / `0.1.6`** —— 三个 npm 通道同时覆盖：
 
 | npm 标签  | 最新版本        | peer 范围覆盖 |
 | -------- | -------------- | ------------- |
-| `alpha`  | `0.1.5-alpha.2` | `>=0.1.5-alpha.2 <0.1.6` |
-| `latest` | `0.1.5-rc.1`    | `>=0.1.5-alpha.2 <0.1.6` |
-| `next`   | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6` |
+| `alpha`  | `0.1.6-alpha.1` | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
+| `latest` | `0.1.5-rc.1`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
+| `next`   | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
 
+两段式范围是刻意的：npm semver 会排除 prerelease，除非范围中有一段的
+[major.minor.patch] 与该版本相同——`0.1.6` 的 alpha 需要自己的那一段
+（第一段继续覆盖 `0.1.5` 各通道版本，包括上一版 `0.1.5-alpha.2`）。
 四个 shell 自持的 peer 包（`dsh-client-ui-slots`、
 `dsh-client-ui-primitives`、`dsh-client-ui-attachment`、`dsh-attachment`）
 使用同一范围，无论宿主走哪个通道都解析成功。更早版本已不在支持范围——
@@ -40,11 +43,14 @@
 （`chat.legacy.turnEnds` 为轮次闭合信号）、`useSession` 只提供窗口标志位，
 且聊天 cell 字典都注册在 `chat` 命名空间下。剩余通道细节——`loadImage`
 owner kit、0.1.5 的用户气泡更新（官方 `projectUserText` 签名、`file`
-内容块与通用文件卡片、0.1.5 的 `FileTypeIcon`/`fileExtension` 文件卡片
-原语）——封闭在
+内容块与通用文件卡片、`FileTypeIcon`/`fileExtension` 文件卡片原语）、
+以及 0.1.6-alpha.1 的新增项（`projectUserText` 的可选 `references` 动作，
+使 `@file` 与技能 `/name` chip 可点击；工具组渲染器转发的
+`tool.call.toolview` owner `loadImage` 货币）——封闭在
 `src/client/snapshot-face.ts`（快照归一化）、`src/client/registry.ts`
-（`compositeT` 命名空间兜底）与 `src/client/UserNodeWrapper.tsx`
-（用户文本 + 附件 kit）三个模块中；运行时 overlay 在 SlotCore 结构
+（`compositeT` 命名空间兜底）、`src/client/UserNodeWrapper.tsx`
+（用户文本 + 附件 kit）与 `src/client/ToolCallGroupView.tsx`
+（工具 owner 货币）中；运行时 overlay 在 SlotCore 结构
 变化时 fail-closed（插件保持惰性，官方 UI 照常渲染）。
 
 `dsh-fold` 是**纯浏览器端插件**：只读取 shell 交给每个 seat 的聊天快照

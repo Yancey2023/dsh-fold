@@ -2,7 +2,7 @@
  * Minimal type declarations for the DSH packages this plugin imports.
  *
  * The REAL contracts live in the installed DSH (verified against the newest
- * npm channel releases: `alpha` → 0.1.5-alpha.2, `latest` → 0.1.5-rc.1,
+ * npm channel releases: `alpha` → 0.1.6-alpha.1, `latest` → 0.1.5-rc.1,
  * `next` → 0.1.5-rc.2; see README's "Seam and data model" section). These
  * shims keep the repo typecheckable without a full
  * DSH checkout; the runtime contract is enforced by the DSH page itself
@@ -54,19 +54,33 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   export const IconApiOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   export const IconQuestionOutline14: FC<SVGProps<SVGSVGElement> & { size?: number }>
   /**
+   * Optional navigation supplied by consumers that can preview references
+   * (0.1.6-alpha.1 `projectUserText` parameter).
+   */
+  export interface UserTextReferences {
+    /** Open a file path decoded from an `@` mention. */
+    openFile: (path: string) => void
+    /** Open the source of a skill loaded for this message. */
+    openSkill: (name: string) => void
+  }
+  /**
    * Display projection of reference forms in sent user text (the OFFICIAL
    * primitive, exported by every supported release).
    *
-   * Signature: `(text, sessionLabels, slashNames?, slashKind?)` — the plugin
-   * always calls the 4-arg form; older rc hosts ignore the trailing
-   * arguments (every `/name`/`@name` token decorates), the 0.1.5 channel
-   * gates `/name` tokens on `slashNames` exactly like the host product.
+   * Signature: `(text, sessionLabels?, slashNames?, slashKind?, references?)`.
+   * The plugin always forwards `slashNames` / `slashKind` (the 0.1.5 channels
+   * gate `/name` tokens on `slashNames` exactly like the host product; the
+   * 0.1.6-alpha.1 channel added the optional `references` actions that turn
+   * `@file` and skill `/name` chips into clickable buttons). Older hosts that
+   * do not define the trailing parameters simply ignore them and keep the
+   * inert-chip behavior, so one call site covers every supported release.
    */
   export function projectUserText(
     text: string,
     sessionLabels?: readonly string[],
     slashNames?: readonly string[],
     slashKind?: 'skill' | 'command',
+    references?: UserTextReferences,
   ): ReactNode
   /** Compact byte text (`312B`, `4.2KB`, …). */
   export function fileSizeText(bytes: number): string

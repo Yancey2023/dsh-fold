@@ -458,7 +458,7 @@ function snapshot(order, nodes) {
 
 // ---------------------------------------------------------------------------
 // Current channels: assistant data carries `status` (running/settled/
-// interrupted) on both rc.1 and alpha.2 — isLiveWorkNode keys off it.
+// interrupted) on rc.1, rc.2 and the alphas — isLiveWorkNode keys off it.
 // ---------------------------------------------------------------------------
 
 // Streaming think row (status: running) -> live.

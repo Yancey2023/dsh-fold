@@ -6,6 +6,8 @@
  *   ref chips           -> OFFICIAL projectUserText: /name gated by loaded
  *                          skillNames, @name decorates as a file chip,
  *                          exact session labels as session chips
+ *   reference actions   -> seat openFile/openSkill forwarded as the 0.1.6
+ *                          `references` arg (@file + skill chips clickable)
  *   images + extras     -> official ImageGallery props + JsonBlock extras
  *   file attachments    -> per-image renderMessageImages (compact) + file card
  *   toggle              -> expand removes the clamp, collapse restores it
@@ -193,6 +195,42 @@ const byClass = (name) => (node) => typeof node.props?.className === 'string' &&
   assert.equal(chips[0].props['data-ref-chip'], 'session')
   assert.equal(textOf(chips[0]), 'abc')
   assert.equal(chips[1].props['data-ref-chip'], 'file')
+  root.unmount()
+}
+
+// ---------------------------------------------------------------------------
+// Reference actions (0.1.6-alpha.1): the seat's openFile / openSkill are
+// forwarded as projectUserText's fifth `references` argument, making @file and
+// skill /name chips clickable buttons; session chips stay inert spans.
+// ---------------------------------------------------------------------------
+{
+  const opened = []
+  const input = 'open @src/main.ts and run /read then ask @abc'
+  let root
+  await act(async () => {
+    root = create(
+      React.createElement(
+        UserNodeWrapper,
+        makeProps(userNode('u2d', [textBlock(input)], Date.now(), { skillNames: ['read'], referenceLabels: ['abc'] }), {
+          openFile: (path) => opened.push(`file:${path}`),
+          openSkill: (name) => opened.push(`skill:${name}`),
+        }),
+      ),
+    )
+  })
+  const json = root.toJSON()
+  const chips = findAll(json, (node) => node.props?.['data-ref-chip'] !== undefined)
+
+  assert.equal(chips.length, 3, '@file + skill /name + session chips decorate')
+  assert.equal(chips[0].props['data-ref-chip'], 'file')
+  assert.equal(chips[0].type, 'button', '@file chip is a clickable button on 0.1.6')
+  chips[0].props.onClick()
+  assert.equal(chips[1].props['data-ref-chip'], 'skill')
+  assert.equal(chips[1].type, 'button', 'skill /name chip is a clickable button on 0.1.6')
+  chips[1].props.onClick()
+  assert.equal(chips[2].props['data-ref-chip'], 'session')
+  assert.equal(chips[2].props.onClick, undefined, 'session chips stay inert')
+  assert.deepEqual(opened, ['file:src/main.ts', 'skill:read'])
   root.unmount()
 }
 

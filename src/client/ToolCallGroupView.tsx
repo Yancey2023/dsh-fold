@@ -21,6 +21,11 @@
  * Expanded state lives in React state of the leader seat; the seat's React
  * key is the leader's stable node key, so streaming updates never collapse a
  * user-expanded group.
+ *
+ * The official `tool.call.toolview` owner mirror carries the chat seat's
+ * `loadImage` (required by the 0.1.5/0.1.6 owner contract) so image-bearing
+ * tool views render their `tool.call.images` gallery instead of degrading to
+ * the envelope text; `cwd` / `openFile` / `inspect` are forwarded unchanged.
  */
 
 import * as React from 'react'
@@ -34,6 +39,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { callName, groupOf, isGroupLeader, isLiveWorkNode, isRunningBlock, isTransparentAssistant, latestWorkNode } from './group'
 import type { ChatNodeLike, GroupItem, ToolBlockLike, ToolGroup } from './group'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { runningToolRow } from './tool-row'
 import { AutoLoadHost } from './AutoLoadHost'
 import { getConversationT, officialNodeEntry } from './registry'
@@ -47,6 +53,9 @@ type RenderSlot = (
   opts: { entryKey: string; fallback?: React.ReactNode },
 ) => React.ReactNode
 
+/** Session-authorized image loader the chat seat hands down (official owner kit). */
+export type LoadImage = (attachment: ImageAttachmentRef) => Promise<string>
+
 /** Official `tool.call.toolview` owner currency (mirrors the runtime contract). */
 export interface ToolCallOwnerProps {
   callId: string
@@ -54,6 +63,13 @@ export interface ToolCallOwnerProps {
   block: ToolBlockLike
   cwd?: string
   openFile: (path: string) => void
+  /**
+   * Session-authorized image loader for the `tool.call.images` child slot the
+   * tool view owns. The official ToolCallTree forwards the chat seat's
+   * `loadImage`; without it an image-bearing tool view degrades to its
+   * envelope text (`renderSlot !== void 0 && loadImage !== void 0` gate).
+   */
+  loadImage?: LoadImage
   inspect?: () => void
 }
 
@@ -71,6 +87,8 @@ export interface ToolCallGroupViewProps {
   /** Session workspace root. */
   cwd?: string
   openFile: (path: string) => void
+  /** Session-authorized image loader (chat seat owner kit; required on 0.1.5+). */
+  loadImage?: LoadImage
   inspectCall: (callId: string) => void
   /** Namespace-bound translate (`locale: 'fold'`). */
   t: (key: string, params?: Record<string, unknown>) => string
@@ -122,6 +140,7 @@ const ToolCallBranch = React.memo(function ToolCallBranch({
   selectedCallId,
   cwd,
   openFile,
+  loadImage,
   inspectCall,
   t,
 }: {
@@ -130,6 +149,7 @@ const ToolCallBranch = React.memo(function ToolCallBranch({
   selectedCallId?: string
   cwd?: string
   openFile: (path: string) => void
+  loadImage?: LoadImage
   inspectCall: (callId: string) => void
   t: ToolCallGroupViewProps['t']
 }): React.ReactElement {
@@ -140,12 +160,13 @@ const ToolCallBranch = React.memo(function ToolCallBranch({
       toolName: name,
       block,
       openFile,
+      loadImage,
       cwd,
       inspect: () => {
         inspectCall(block.callId)
       },
     }),
-    [block, name, openFile, cwd, inspectCall],
+    [block, name, openFile, loadImage, cwd, inspectCall],
   )
   const children =
     block.subCalls !== undefined && block.subCalls.length > 0
@@ -160,6 +181,7 @@ const ToolCallBranch = React.memo(function ToolCallBranch({
               selectedCallId,
               cwd,
               openFile,
+              loadImage,
               inspectCall,
               t,
             }),
@@ -360,6 +382,8 @@ export interface GroupItemsProps {
   selectedCallId?: string
   cwd?: string
   openFile?: (path: string) => void
+  /** Session-authorized image loader forwarded into each tool owner. */
+  loadImage?: LoadImage
   inspectCall?: (callId: string) => void
   /** Conversation-namespace translate (the official model-retry row needs it). */
   conversationT?: (key: string, params?: Record<string, unknown>) => string
@@ -396,7 +420,7 @@ const DelegatedNoticeItem = React.memo(function DelegatedNoticeItem({ item, conv
 
 /** Expanded contents: think rows, model-retry notices and official tool cards in execution order. */
 export const GroupItems = React.memo(function GroupItems(props: GroupItemsProps): React.ReactElement {
-  const { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT } = props
+  const { group, t, renderSlot, selectedCallId, cwd, openFile, loadImage, inspectCall, conversationT } = props
   return React.createElement(
     'div',
     { className: 'dshToolGroupItems' },
@@ -416,6 +440,7 @@ export const GroupItems = React.memo(function GroupItems(props: GroupItemsProps)
         selectedCallId,
         cwd,
         openFile,
+        loadImage,
         inspectCall,
         t,
       })
@@ -431,7 +456,7 @@ function FoldedSeat(): React.ReactElement {
 
 /** The tool-call seat: only the group's first TOOL leader renders (bar + items). */
 export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: ToolCallGroupViewProps): React.ReactElement | null {
-  const { node, useSession, renderSlot, selectedCallId, cwd, openFile, inspectCall, t, sessionId } = props
+  const { node, useSession, renderSlot, selectedCallId, cwd, openFile, loadImage, inspectCall, t, sessionId } = props
   // ALL hooks unconditional (React rules; a path-dependent hook order
   // crashes with "Rendered fewer hooks than expected").
   const { chat, hasMore, loadingOlder } = useSnapshotFace(props)
@@ -459,7 +484,7 @@ export const ToolCallGroupView = React.memo(function ToolCallGroupView(props: To
       'div',
       { className: 'dshToolGroup', 'data-tool-group': '', 'data-state': live !== undefined && !expanded && group.itemKeys.includes(live.key) && isLiveWorkNode(live) ? 'running' : 'settled' } as unknown as React.HTMLAttributes<HTMLDivElement>,
       React.createElement(GroupBar, { group, expanded, onToggle: toggle, onKeyDown, t, cwd, live }),
-      expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, inspectCall, conversationT }) : null,
+      expanded ? React.createElement(GroupItems, { group, t, renderSlot, selectedCallId, cwd, openFile, loadImage, inspectCall, conversationT }) : null,
     )
   }
   return React.createElement(AutoLoadHost, { sessionId, hasMore, loadingOlder }, output)

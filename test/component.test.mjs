@@ -174,6 +174,38 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
+// Tool owner currency: the chat seat's `loadImage` (required by the official
+// 0.1.5/0.1.6 owner contract) and `openFile` are forwarded into every
+// `tool.call.toolview` dispatch, so image-bearing tool views render their
+// `tool.call.images` gallery instead of degrading to the envelope text.
+// ---------------------------------------------------------------------------
+{
+  const seen = []
+  const loadImage = async (attachment) => `url:${attachment.id}`
+  const openFile = () => {}
+  const snapshot = makeSession(['t1', 't2'], [toolNode('t1', 1, settled('read-image')), toolNode('t2', 1, settled('bash'))])
+  const props = makeProps(snapshot, 't1')
+  props.renderSlot = (_key, owner, opts) => {
+    seen.push(owner)
+    return `CARD:${opts.entryKey}`
+  }
+  props.loadImage = loadImage
+  props.openFile = openFile
+  const root = create(React.createElement(ToolCallGroupView, props))
+  act(() => {
+    root.toJSON().children[0].props.onClick()
+  })
+  assert.equal(seen.length, 2, 'each expanded member dispatches once')
+  for (const owner of seen) {
+    assert.equal(owner.loadImage, loadImage, 'owner forwards the seat image loader')
+    assert.equal(owner.openFile, openFile, 'owner forwards the seat file opener')
+    assert.equal(owner.cwd, '/ws')
+    assert.equal(typeof owner.inspect, 'function')
+  }
+  root.unmount()
+}
+
+// ---------------------------------------------------------------------------
 // A model-retry notice between the tools SPLITS the run: each side its own
 // one-block bar; the retry itself renders unfolded (NoticeNodeWrapper).
 // ---------------------------------------------------------------------------
@@ -308,7 +340,7 @@ function childrenOf(node) {
 }
 
 // ---------------------------------------------------------------------------
-// Current-channels seat kit (both rc.1 and alpha.2): `useChat` carries the
+// Current-channels seat kit (rc.1 / rc.2 / the alphas): `useChat` carries the
 // chat target directly (order/nodes/legacy.turnEnds), `useSession` carries
 // only the window flags — the same kit every render test drives through
 // makeProps.
