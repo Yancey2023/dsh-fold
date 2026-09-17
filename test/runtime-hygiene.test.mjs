@@ -66,10 +66,10 @@ const forbiddenPeers = peers.filter((name) => CORE_RUNTIME.test(name))
 assert.deepEqual(forbiddenPeers, [], 'no core-runtime package may be a peer — the plugin must not bind to host internals')
 
 // The npm channel versions the plugin must accept: the newest `alpha`
-// (0.1.6-alpha.1), `latest` (0.1.5-rc.1) and `next` (0.1.5-rc.2) dist-tags,
-// plus the previous alpha (0.1.5-alpha.2) the range still admits. Every
-// shell-owned peer range must cover all of them.
-const SUPPORTED_CHANNEL_VERSIONS = ['0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2', '0.1.6-alpha.1']
+// (0.1.6-alpha.2), `latest` (0.1.5-rc.2) and `next` (0.1.5-rc.2) dist-tags,
+// plus the previous channel heads (0.1.5-alpha.2, 0.1.6-alpha.1) the range
+// still admits. Every shell-owned peer range must cover all of them.
+const SUPPORTED_CHANNEL_VERSIONS = ['0.1.5-alpha.2', '0.1.5-rc.1', '0.1.5-rc.2', '0.1.6-alpha.1', '0.1.6-alpha.2']
 
 // Minimal prerelease-aware semver comparison (numeric core, then dot-split
 // prerelease identifiers: numeric < alphanumeric; a shorter list sorts

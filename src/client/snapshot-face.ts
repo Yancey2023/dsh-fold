@@ -1,7 +1,7 @@
 /**
  * Unified conversation-snapshot face across the supported DSH channels.
  *
- * Supported releases (npm `alpha` → 0.1.6-alpha.1, `latest` → 0.1.5-rc.1,
+ * Supported releases (npm `alpha` → 0.1.6-alpha.2, `latest` → 0.1.5-rc.2,
  * `next` → 0.1.5-rc.2) share ONE chat-node seat kit: the renderer's standard
  * session kit hands every `conversation.chat.node` cell TWO selector hooks
  * (the product's own turn-tail cell consumes `useChat` from its props on

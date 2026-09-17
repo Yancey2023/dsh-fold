@@ -20,8 +20,8 @@
  * toggle, which is hidden (CSS) unless the text actually overflows 3 lines.
  * Copy uses the official writeClipboard primitive.
  *
- * Release seams (sealed here, verified against 0.1.5-alpha.2 / 0.1.5-rc.1 /
- * 0.1.5-rc.2 / 0.1.6-alpha.1 — the newest npm `alpha` / `latest` / `next`
+ * Release seams (sealed here, verified against 0.1.5-alpha.2 / 0.1.5-rc.2 /
+ * 0.1.6-alpha.1 / 0.1.6-alpha.2 — the newest npm `alpha` / `latest` / `next`
  * tags):
  *
  *  - Text decoration uses the OFFICIAL `projectUserText` primitive. Its

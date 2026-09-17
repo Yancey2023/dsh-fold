@@ -95,7 +95,7 @@ official primitives).
   product's `UserStyleBubble` built from **official primitives** (the
   official `projectUserText` — `/name`/`@name`/session ref chips with the
   exact per-release gating of the host bubble, clickable `@file` / skill
-  chips on 0.1.6-alpha.1 via the seat `openFile` / `openSkill` actions —,
+  chips on the 0.1.6 alphas via the seat `openFile` / `openSkill` actions —,
   `JsonBlock` extras, the
   official attachment row: slot-backed `ImageGallery` calls, per-image
   compact calls plus generic-file cards (`FileTypeIcon`/`fileExtension`/
@@ -128,8 +128,8 @@ three npm channels at once:
 
 | npm tag  | newest release | peer range coverage |
 | -------- | -------------- | ------------------- |
-| `alpha`  | `0.1.6-alpha.1` | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
-| `latest` | `0.1.5-rc.1`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
+| `alpha`  | `0.1.6-alpha.2` | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
+| `latest` | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
 | `next`   | `0.1.5-rc.2`    | `>=0.1.5-alpha.2 <0.1.6 \|\| >=0.1.6-alpha.1 <0.1.7` |
 
 The two-leg range is deliberate: npm semver excludes a prerelease from a
@@ -138,7 +138,11 @@ range whose legs only carry a *different* `major.minor.patch` tuple, so the
 releases, including the previous `0.1.5-alpha.2`). All four shell-owned peer
 packages (`dsh-client-ui-slots`, `dsh-client-ui-primitives`,
 `dsh-client-ui-attachment`, `dsh-attachment`) accept the same range, so the
-plugin resolves against whatever channel the host ships. Older releases are
+plugin resolves against whatever channel the host ships. The newest alpha,
+`0.1.6-alpha.2`, adds a reusable Factory subsystem to `SlotCore`; the
+`register` / `releaseEntry` child-declaration contract the overlay depends on
+is unchanged — `test/overlay.test.mjs` exercises the real package in both its
+published and minified forms. Older releases are
 intentionally out of scope — the version-compatibility layers for them have
 been removed (no `useSession`-carried chat adapter, no namespace probe, no
 `status`/`final` fallbacks, no plugin-owned turn-level big fold — that fold is
@@ -151,7 +155,8 @@ content blocks with generic-file cards, the `FileTypeIcon` / `fileExtension`
 file-card primitives), and the 0.1.6-alpha.1 additions (the optional
 `projectUserText` `references` actions that make `@file` / skill `/name`
 chips clickable, and the `tool.call.toolview` owner's `loadImage` currency
-forwarded by the tool-group renderer) — are sealed in
+forwarded by the tool-group renderer, both carried unchanged by
+`0.1.6-alpha.2`) — are sealed in
 `src/client/snapshot-face.ts` (snapshot normalization),
 `src/client/registry.ts` (`compositeT` namespace fallback),
 `src/client/UserNodeWrapper.tsx` (user-text + attachment kits) and

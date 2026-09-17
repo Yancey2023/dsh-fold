@@ -2,7 +2,7 @@
  * Minimal type declarations for the DSH packages this plugin imports.
  *
  * The REAL contracts live in the installed DSH (verified against the newest
- * npm channel releases: `alpha` → 0.1.6-alpha.1, `latest` → 0.1.5-rc.1,
+ * npm channel releases: `alpha` → 0.1.6-alpha.2, `latest` → 0.1.5-rc.2,
  * `next` → 0.1.5-rc.2; see README's "Seam and data model" section). These
  * shims keep the repo typecheckable without a full
  * DSH checkout; the runtime contract is enforced by the DSH page itself
